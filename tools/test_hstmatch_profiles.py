@@ -104,6 +104,7 @@ class IndependentVerifierProfileTests(unittest.TestCase):
             for name, rec in matcher.items():
                 self.assertEqual(verifier[name]["flags"], rec["flags"], name)
 
+    @unittest.skipUnless(sys.platform == "win32", "the recipe maps Windows drive paths to WSL")
     def test_unoptimized_compile_recipe(self) -> None:
         cmd = hstxverify.compile_command(Path("C:/x/sample.c"), Path("C:/x/o.o"), Path("C:/x/log"),
                                          {"profile": "gcc171-O0", "lang": "c99"}, "$HOME/hst-mwcc",
@@ -111,6 +112,7 @@ class IndependentVerifierProfileTests(unittest.TestCase):
         self.assertIn("-B $HOME/hst-gcc/psp-gcc-1.7.1/lib/gcc-lib/psp/", cmd)
         self.assertIn("-c -O0 -G0 -fno-merge-constants -x c ", cmd)
 
+    @unittest.skipUnless(sys.platform == "win32", "the recipe maps Windows drive paths to WSL")
     def test_gcc402x_compile_recipe(self) -> None:
         with mock.patch.object(hstxverify.CFG, "get", return_value="$HOME/lbp-gcc4"):
             cmd = hstxverify.compile_command(Path("C:/x/sample.c"), Path("C:/x/o.o"), Path("C:/x/log"),
