@@ -11,7 +11,7 @@
 
 **[Progress](docs/PROGRESS.md) · [Guide](docs/GUIDE.md) · [Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp)**
 
-[![Code matched](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FJstar269%2Fhst-decomp%2Fmain%2Fdocs%2Fobjdiff-report.json&query=%24.measures.matched_code_percent&suffix=%25&label=code%20matched&color=6E9600)](#progress-at-a-glance)
+[![Code matched](https://bytematch.dev/Jstar269/hst-decomp.svg?label=code%20matched&measure=matched_code_percent)](https://bytematch.dev/Jstar269/hst-decomp)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](#license)
 [![REUSE status](https://api.reuse.software/badge/github.com/Jstar269/hst-decomp)](https://api.reuse.software/info/github.com/Jstar269/hst-decomp)
 [![Platform: PSP (UCUS98701)](https://img.shields.io/badge/PSP-UCUS98701-555555.svg)](#hst-decomp)
