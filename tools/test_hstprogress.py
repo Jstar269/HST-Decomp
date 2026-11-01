@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -51,6 +52,10 @@ class LadderTests(unittest.TestCase):
             self.assertEqual(list(P.build_reports(d)), ["EBOOT.BIN"])
             self.assertEqual(P.build_reports(d)["EBOOT.BIN"]["t2_source_bytes"], {"x": 4})                      # public by default
             self.assertEqual(P.build_reports(d, "private")["EBOOT.BIN"]["t2_source_bytes"], {"x": 9})
+            os.utime(d / "EBOOT.BIN-report.json", (946857600, 946857600))                  # 2000-01-03 UTC
+            self.assertEqual(P.build_reports(d)["EBOOT.BIN"]["built"], "2000-01-03")       # no date: the file's
+            (d / "EBOOT.BIN-report.json").write_text(json.dumps({"module": "EBOOT.BIN", "build_mode": "public", "t2_source_bytes": {"x": 4}, "built": "1999-12-31"}), encoding="utf-8")
+            self.assertEqual(P.build_reports(d)["EBOOT.BIN"]["built"], "1999-12-31")       # the report's own date
         self.assertEqual(P.build_reports(Path(tmp) / "missing"), {})
 
 

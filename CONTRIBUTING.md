@@ -40,7 +40,7 @@ source is copied into it.
 
 Follow [Setup](docs/GUIDE.md#setup) in the project guide, then check that one function builds:
 
-```
+```text
 python tools/hstconfig.py check
 python tools/hstmatch.py src/eboot/FUN_00000000.c
 ```
@@ -118,7 +118,7 @@ address automatically. Every other name must be in `symbols/<module>.txt` (C++ r
 member names). If a match needs a new named symbol, verify its address in the disassembly, check with `grep` that the
 name is not already there, and **append** one line:
 
-```
+```text
 printf '%s\n' 'name = 0xADDR;   # <your source file>' >> symbols/<module>.txt
 ```
 
@@ -147,7 +147,7 @@ contiguous run (`start=` the first function, `end=` the last, `symbol=` the firs
 `<short_descriptive_name>_<addr8>.cpp` (or `.c`), where `<addr8>` is the start address in eight hex digits. Before
 installing, check that nobody covered the function already (a duplicate must be removed, keeping the reviewed one):
 
-```
+```text
 grep -l "start=0x<addr>" src/*/* wip/*
 ```
 
@@ -186,7 +186,7 @@ The owner reviews every source at the end, so aim for the code the developers wr
   member access instead of `*(int *)(p + 0x14)` when the layout is clear, `bool` and enums where obvious.
 - Avoid matching hacks: duplicated conditions, dummy locals or parameters that only steer register allocation,
   `volatile`, self-assignments, gratuitous casts or `goto`. When one of them is the **only** exact form you found,
-  keep it, but name it in the note line ("matching idiom: <what>"); `hstlint.py` counts those.
+  keep it, but name it in the note line (`matching idiom: <what>`); `hstlint.py` counts those.
 - Names: use a descriptive name only when the evidence supports it (strings, callers, documented research findings);
   otherwise keep the Ghidra address names. Never invent semantics.
 - Be consistent: one declaration per symbol across the tree (`hstlint.py` reports symbols declared with different
@@ -205,7 +205,7 @@ The detailed, address-referenced findings are in [docs/MWCC-DIGEST.md](docs/MWCC
 If you learn something new, append **one dated line** to `MWCC-NOTES.md` that names the function address (append only,
 never rewrite the file):
 
-```
+```text
 cat >> docs/MWCC-NOTES.md <<'EOF'
 - 2026-10-15 (0xADDR): what you found, with the evidence.
 EOF
@@ -245,7 +245,7 @@ The main points, as a start:
 
 ## Checks before you finish
 
-```
+```text
 python tools/hstmatch.py <every file you added or changed>     # EXACT n/n
 python tools/hstlint.py --show header                          # none of your files listed
 python tools/hstprcheck.py --base origin/main                  # what CI checks on your pull request

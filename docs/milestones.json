@@ -1,6 +1,6 @@
 {
  "schema": "hst-decomp.milestone-record.v1",
- "generated": "2026-10-29",
+ "generated": "2026-11-01",
  "milestones": [
   {
    "id": "inventory",
@@ -13,16 +13,16 @@
   {
    "id": "game-code",
    "title": "Game code matched",
-   "progress": 37.97984426074764,
-   "detail": "2,148,576 of 5,657,148 code bytes (105,932 B of Sony code kept out of this repository are not counted)",
+   "progress": 38.81793440793842,
+   "detail": "2,195,988 of 5,657,148 code bytes (105,932 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
   {
    "id": "all-code",
    "title": "All code matched",
-   "progress": 37.97984426074764,
-   "detail": "2,148,576 of 5,657,148 code bytes (232,540 B of Sony code kept out of this repository are not counted)",
+   "progress": 38.81793440793842,
+   "detail": "2,195,988 of 5,657,148 code bytes (232,540 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
@@ -62,7 +62,7 @@
    "id": "platform-layer",
    "title": "Platform layer",
    "progress": 3.4615384615384617,
-   "detail": "9 of 260 imported system functions complete in Nakagawa; 213 partial or unreviewed, 36 refused or fake, 2 missing",
+   "detail": "9 of 260 imported system functions complete in Nakagawa; 213 partial or unreviewed, 37 refused or fake, 1 missing",
    "reached": null,
    "regressed": false
   },

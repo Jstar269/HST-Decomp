@@ -12,9 +12,9 @@ the tiers progress is reported in, are defined in [`COMPLETION.md`](COMPLETION.m
   address names from Ghidra (`FUN_0011d894`), and types are provisional. Every note line says "names and types
   await human review" until a person has reviewed the source.
   <!-- hstprogress:begin guide-source-kinds -->
-- Of the 12,522 sources (measured 2026-10-29), 7,100 are address-substituted **clones** of another matched source
-  (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,857 are such
-  translations corrected by hand, 2,247 are hand-written, 136 are instances of container templates, and 85 are newlib
+- Of the 12,777 sources (measured 2026-11-01), 7,213 are address-substituted **clones** of another matched source
+  (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,860 are such
+  translations corrected by hand, 2,386 are hand-written, 136 are instances of container templates, and 85 are newlib
   library functions translated from newlib sources (37 more are clones of them, counted among the clones), and 44 have
   no known note kind.
 - 122 of the sources are newlib library functions compiled with Sony's `psp-gcc` kits; all others are game code
@@ -53,7 +53,7 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
 1. Install the compilers in WSL, on the **native Linux filesystem** (the i386 `psp-gcc` cannot stat files on
    `/mnt/c`). The layout the tools expect:
 
-   ```
+   ```text
    <mwcc_native>/wibo
    <mwcc_native>/builds/219/mwccpsp.exe
    <gcc_home>/psp-gcc-1.3.1/bin/psp-gcc
@@ -66,7 +66,7 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
 2. Create the campaign directory, `<campaign_root>`, from your own decrypted copies of the two executables this
    repository reconstructs (the disc is Hot Shots Tennis: Get a Grip, UCUS98701, North America, version 1.01):
 
-   ```
+   ```text
    python tools/hstbootstrap.py --out <campaign_root> --eboot <decrypted EBOOT.BIN> --sharing <decrypted DATA.PSP>
    ```
 
@@ -82,7 +82,7 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
 
 3. Describe your machine to the tools:
 
-   ```
+   ```text
    copy hst-config.example.json hst-config.json
    notepad hst-config.json
    python tools/hstconfig.py check
@@ -112,7 +112,7 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
 
 ## Verify
 
-```
+```text
 python tools/hstmatch.py --all                   # rebuild and compare every source under src/
 python tools/hstmatch.py --all --parallel 12     # more concurrent compiles (default 6)
 python tools/hstmatch.py src/eboot/FUN_00000000.c    # specific files
@@ -148,7 +148,7 @@ keep their retail container and format-B relocation table. The format and the or
 hstmatch.json` reuses a `hstmatch.py --json` run and its `build/` directories); one run per module at a time
 (`try/build/<module>.lock`).
 
-```
+```text
 python tools/hstbuild.py EBOOT.BIN                  # one module
 python tools/hstbuild.py EBOOT.BIN --shift 0x1000   # and the shifted build (gate 5, static half)
 python tools/hstbuild.py all --parallel 6           # all six
@@ -216,7 +216,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
   hashed by the toolchain lock). Use it only for functions no gcc131/gcc171 profile reproduces (later-compiler
   shapes: duplicated epilogues, tail calls, word loads where GCC 3.3 narrows).
   <!-- hstprogress:begin guide-profiles -->
-  Measured 2026-10-29, the public sources use `mwcc219` (12,400 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
+  Measured 2026-11-01, the public sources use `mwcc219` (12,655 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
   sources) and `gcc171x-O1` (2 sources).
   <!-- hstprogress:end -->
 - `rodata=0xADDR`, `data=`, `sdata=`, `bss=`, `sbss=`: where the object's sections go when the function refers to

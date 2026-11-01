@@ -135,9 +135,16 @@ class BlockTests(unittest.TestCase):
         self.assertEqual((b["completion-date"], b["completion-t1"], b["completion-t2"], b["completion-t4"]),
                          ("2000-02-03", "4.500% (450 B", "12.340% (1,234 B", "0.000% (0 B)"))
         glance = b["readme-glance"]
-        self.assertIn("| **Code matched** | **9.0%** | 15 of the 150 game functions", glance)
-        self.assertIn("| **Built from source** | **12.3%** |", glance)
-        self.assertTrue(glance.endswith("That figure is 0.0%. Measured 2000-02-03."))
+        self.assertIn("| **Code matched** (T1) | **9.0%** | 450 of the 5,000 code bytes", glance)
+        self.assertIn("| **Functions matched** (T1) | **10.0%** | 15 of the 150 game functions. |", glance)
+        self.assertIn("| **Built from source** (T2) | **12.3%** |", glance)
+        self.assertTrue(glance.endswith("That figure is 0.0%. Measured 2000-02-03 with `python tools/hstprogress.py`."))
+        built = P.tier_ladder(10000, 450, {"A": {"module": "A", "t2_source_bytes": {"src/a.c": 1234},
+                                                 "built": "2000-01-31"}}, None)
+        dated = P.render_blocks(fig(), built, KINDS, "2000-02-03")["readme-glance"]
+        self.assertTrue(dated.endswith("Measured 2000-02-03 with `python tools/hstprogress.py`; built from source by "
+                                       "the whole-module build of 2000-01-31."))
+        self.assertEqual(P.DATE.search(dated).group(0), "2000-02-03")     # --check-readme reads the first date
         guide = b["guide-source-kinds"]
         self.assertTrue(guide.startswith("- Of the 14 sources (measured 2000-02-03), 6 are address-substituted"))
         self.assertIn("(1 more are clones of them", guide.replace("\n  ", " "))

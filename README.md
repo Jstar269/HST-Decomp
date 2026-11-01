@@ -9,9 +9,10 @@
 
 **Matching decompilation of Hot Shots Tennis: Get a Grip for the PSP.**
 
-**[Progress](docs/PROGRESS.md) · [Guide](docs/GUIDE.md) · [Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp)**
+**[Progress](docs/PROGRESS.md) · [Guide](docs/GUIDE.md) · [Contributing](CONTRIBUTING.md) · [Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp) · [LittleBigPlanet decomp](https://github.com/Jstar269/lbp-psp-decomp)**
 
 [![Code matched](https://bytematch.dev/Jstar269/hst-decomp.svg?label=code%20matched&measure=matched_code_percent)](https://bytematch.dev/Jstar269/hst-decomp)
+[![Functions matched](https://bytematch.dev/Jstar269/hst-decomp.svg?label=functions&measure=matched_functions)](https://bytematch.dev/Jstar269/hst-decomp)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](#license)
 [![REUSE status](https://api.reuse.software/badge/github.com/Jstar269/hst-decomp)](https://api.reuse.software/info/github.com/Jstar269/hst-decomp)
 [![Platform: PSP (UCUS98701)](https://img.shields.io/badge/PSP-UCUS98701-555555.svg)](#hst-decomp)
@@ -38,24 +39,27 @@ their owners, are shown only to identify the game, and are not covered by this p
 
 <!-- hstprogress:begin readme-glance -->
 
-| | Progress | What it means |
+| | Progress | What it counts |
 |---|---|---|
-| **Code matched** | **37.3%** | 12,525 of the 19,634 game functions are rewritten as C or C++ that compiles to the game's exact bytes. This is the figure decompilation trackers such as [recomp.fyi](https://recomp.fyi) show. |
-| **Built from source** | **29.9%** | The share of the game's program files that the full build already reproduces, byte for byte, from this source. |
+| **Code matched** (T1) | **38.1%** | 2,195,988 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
+| **Functions matched** (T1) | **65.1%** | 12,780 of the 19,634 game functions. |
+| **Built from source** (T2) | **29.9%** | The share of the game's program files that the whole build reproduces, byte for byte, from this source. |
 
-The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-10-29.
+Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-01 with `python tools/hstprogress.py`; built from source by the whole-module build of 2026-10-29.
 
 <!-- hstprogress:end -->
 
-Decompilation projects usually count a game as done when both numbers reach 100%. Charts and history are in the
-[progress report](docs/PROGRESS.md).
+T1 counts each function matched on its own; T2 counts what the whole executables, rebuilt from this source, reproduce
+in place. Decompilation projects usually count a game as done when both reach 100%. Charts and history are in the
+[progress report](docs/PROGRESS.md), and [`docs/COMPLETION.md`](docs/COMPLETION.md) defines every tier.
 
 ## Contribute, or check the matches yourself
 
-Contributions are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) says what you need and what a pull request contains,
-and issues labelled [good first issue](https://github.com/Jstar269/hst-decomp/labels/good%20first%20issue) are small
-functions to start with. Every task here needs your own copy of the game. You can also re-check every published
-match on your own machine:
+Contributions are welcome: matched functions, near misses with notes, compiler lessons, tool fixes and documentation.
+[CONTRIBUTING.md](CONTRIBUTING.md) says what you need and what a pull request contains, and issues labelled
+[good first issue](https://github.com/Jstar269/hst-decomp/labels/good%20first%20issue) are small functions to start
+with. Every task here needs your own copy of the game. You can also re-check every published match on your own
+machine:
 
 1. Bring your own copy of the game. The tools need its two executables in decrypted form; this repository contains
    no decryption code and does not explain how to decrypt them.
@@ -76,14 +80,14 @@ output of the game to web tools such as decomp.me, pastebins or public issues.
 
 <!-- hstprogress:begin readme-progress -->
 
-**12,522 exact sources** (12,525 functions) and 1,139 near misses, measured 2026-10-29 with `python tools/hstcov.py`
+**12,777 exact sources** (12,780 functions) and 1,232 near misses, measured 2026-11-01 with `python tools/hstcov.py`
 and counted in code bytes:
 
 | Module | Matched / functions | Matched / code bytes | Share of bytes |
 |---|---|---|---|
-| `EBOOT.BIN` | 6,374 / 9,804 | 1,116,768 / 2,849,076 | 39.198 % |
-| `hstp_trans_main.prx` (Sharing Version) | 6,151 / 9,830 | 1,031,808 / 2,914,004 | 35.409 % |
-| **Both** | 12,525 / 19,634 | 2,148,576 / 5,763,080 | 37.282 % |
+| `EBOOT.BIN` | 6,516 / 9,804 | 1,144,264 / 2,849,076 | 40.163 % |
+| `hstp_trans_main.prx` (Sharing Version) | 6,264 / 9,830 | 1,051,724 / 2,914,004 | 36.092 % |
+| **Both** | 12,780 / 19,634 | 2,195,988 / 5,763,080 | 38.104 % |
 
 <!-- hstprogress:end -->
 
@@ -122,13 +126,16 @@ appropriate.
 ## License
 
 Licensed by path ([REUSE](https://reuse.software/)): the reconstructed code (`src/`, `wip/`, `symbols/`) is
-**GPL-3.0-or-later**, the tools and docs are **MIT** (except the title-screen image, which belongs to its owners), and newlib-derived code
-keeps its own notices. The GPL covers
-only the project's own work, not the original game. Sony SDK reconstructions are not published here. Full table:
-[Licensing](docs/GUIDE.md#licensing).
+**GPL-3.0-or-later**, the tools and docs are **MIT** (except the title-screen image, which belongs to its owners), and
+newlib-derived code keeps its own notices. The GPL covers only the project's own work, not the original game. Sony SDK
+reconstructions are not published here. Full table: [Licensing](docs/GUIDE.md#licensing).
 
 ## Learn more
 
 [Progress report](docs/PROGRESS.md) · [Project guide](docs/GUIDE.md) · [Contributing](CONTRIBUTING.md) ·
 [Compiler notes](docs/MWCC-NOTES.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) ·
-[Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp)
+[bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp)
+
+One family of projects by the same maintainer, with the same rules: [Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp)
+runs PSP games natively on a PC, and the matching decompilations are hst-decomp (this one) and
+[lbp-psp-decomp](https://github.com/Jstar269/lbp-psp-decomp) (LittleBigPlanet).

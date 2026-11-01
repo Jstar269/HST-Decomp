@@ -4523,3 +4523,91 @@ untouched. Control = installed EXACT `init_flags_0001f06c`; walls = the four ite
 | 219 | 3.0.1 build 219 | EXACT | 24/24 @10 | 32/32 @17 | 40/40 @13 | 13/14 @8 | lane default |
 Ruling: PROGRESS.md V06 (no-retry). The table above is the data; nothing was adopted and
 `PROFILE['build']` remains "219".
+- (lane dsn8, unreviewed by the main session)
+- **Branch-likely delay slots are nullified when the branch is not taken**, so `bnel` can carry a loop advance (`iVar3 = *(iVar3 + 4)`) that must not run on the exit path; a plain `beql` guarding the found arm instead lets MWCC duplicate the found store into the delay slot. 0x0001f0f0: found-arm-first + `bnel` advance == 69/67 @42 vs 69/67 @48 for the `while (puVar2 != this)` form.
+- **A separate result variable (`p = param_2; if (!p) p = call();`) does not buy a second saved home**: MWCC coalesced parameter and local into one s-reg, so 0x0001be84 stayed 3 saved regs / 16-byte frame against retail's 4 / 32 (52/56 @54). Retail's extra s-reg needs a genuinely distinct live value, not a spelling.
+- **The 5-argument ABI ceiling does not bite with mwccpsp 3.0.1 build 219**: a 5-parameter source compiled here reads the 5th parameter from `t0` exactly as retail does (`move a3,t0` at function entry, 0x000651b8). The earlier "5-6 params unwinnable" verdict is wrong for this build; a five-param draft's first diff will be the frame/register allocation, not the argument register.
+- **Switch jump tables need `rodata=0x...` in the HSTMATCH header.** A dense `switch` emits a `.rodata` table and hstmatch refuses with `UNPLACED_SECTION ... needs rodata=0x...`; the address is the `lui/addiu` target at retail's dispatch (0x000d3730 -> table 0x2c0580, `sltiu at,v0,13`). Adding `rodata=<table addr>` to the header line makes the comparison run.
+- **Symbol-map gaps beyond `_DAT_`**: `FUN_<addr>` is auto-resolved only when the ledger knows the address; `FUN_001cad0` and `s_*` string labels produced MISSING_SYMBOLS. Call unmapped functions through a raw pointer cast `((void (*)(...))0xADDR)(...)` and pass unmapped strings as `(char *)0xADDR`.
+## 2026-10-31 guard-shape batch on 0x000d7eb8 (ruled out)
+`if (node != 0 && nib(node+0x62) == 0)` written as nested one-term ifs, as `!(node == 0 || nib != 0)`,
+and as `goto done` with a bare block all compile to the **same text.bin** (171/170, 134 differ,
+md5 6783d1f5...): MWCC already canonicalises a two-term `&&` guard, so branch polarity at the join is
+not source-addressable. A named boolean for the guard is worse (174/170, 153). Do not retry guard
+spellings to move a branch; the delay-slot materialisation (`addiu a0,sp,N` in the `beqzl`) is the
+only remaining handle and it belongs to the callee argument, not the test.
+2026-11-01 0x000bb190 (dsn8): retail keeps a value assigned to a field in the same register and still emits dead compares against it (li v1,3; sw v1,40(s1); beq v1,8 ...): a `switch` on a local that was just set to a constant keeps its full dispatch chain. Also, a store through an unknown pointer forces MWCC to reload a cached global (this->0x50) for the loop end test, but only on the path that performs the store -- model the end condition as a fresh `container->begin + count` read inside the loop, not hoisted.
+2026-11-01 0x00170068 (dsn8) EXACT: hstdiff prints its two columns as "ours | retail" (stated in its first line) - reading it the other way round sends you chasing the opposite of the real remedy. Copy-idiom ladder for a run of four adjacent shorts: four separate `*(u16 *)d = s[i]` stores give 4x lhu + 4x sh PAIRS; `*(struct {short a,b,c,d;} *)d = *(struct {short a,b,c,d;} *)s` gives 4x lh hoisted then 4x sh (what retail had here); `*(struct {short s[4];} *)d = ...` gives 2x lw + 2x sw (8 words short). The struct tag must be declared at FILE scope: declared inside a block, the out-of-block copy silently compiled to nothing.
+2026-11-01 0x001caee4 (dsn8): two frame levers. (1) A container held as three bare ints (`int *begin; int count; int cap;` as separate locals) lets MWCC fold `begin == begin + count*0x14` to true and PRUNE the whole else branch (144-byte retail function compiled to a 32-byte frame, 93/200 words); wrapping it as `typedef struct { int *begin; int count; int cap; } Vec;` and taking its address restores the body (183/200). So when a branch vanishes, suspect constant folding of a container comparison, not a Ghidra error. (2) When frame size is the residual and the gap is a multiple of a local temporary's size, attack SLOT DISTINCTNESS first: retail gives each 16-byte vector temporary its own stack slot even across disjoint branches, while MWCC overlaps them and the frame comes out smaller by exactly the sum of the overlapped slots.
+2026-11-01 LANE-WIDE LEVER (frame short by a constant 16/24/32 bytes): check for stack arguments before anything else. Grep the retail jal sites for `sw <reg>,N(sp)` with N >= 16 immediately before the call: if present, that call passes more than four arguments and the caller reserves an outgoing home area, which by itself explains a frame that is exactly the argument-area size too small. Homing/spilling the function's own parameters is NOT the fix (0x0005d100: three homing spellings all landed on 241 differing words while the promoted body sits at 195 with the same 32-byte gap).
+2026-11-01 TRANSLATION-UNIT TYPE (0x002a625c): the reference-based `Clamp(const float&, const float&, const float&)` recipe and the empty-by-value `struct False {}` tag recipe both need a C++ translation unit - a file with `lang=c99` rejects `const float &`. In this lane the C++ spelling is `lang=c++` in the header and a .cpp file (NOT `lang=cpp`: that makes mwccpsp abort with a bare "Usage Error"). Four follow-on rules that each cost a compile: (1) in C++ an empty parameter list means "no arguments", so every callee needs explicit parameters, and a call site that passes different arity needs a default argument (`extern int FUN_x(float = 0.0f);`); (2) C++ name-mangles everything, so wrap the extern declarations in `extern "C" { ... }` AND write the target definition as `extern "C" void FUN_addr(...)`, otherwise hstmatch reports MISSING_SYMBOLS `FUN_x__Fi` then NO_SYMBOL; (3) mark a file-local helper `static inline`, since plain `static` emits an out-of-line body and the target goes MISPLACED by that body's size; (4) an int-typed first argument to a prototype taking `void *` needs an explicit `(void *)` cast in C++.
+2026-11-01 GHIDRA `&PTR_LAB_xxx + param_1` (0x002a625c): this is a RELATIVE FIELD READ on the parameter, not a label. Ghidra renders `*(float *)(&DAT_000016f4 + param_1)` when it cannot attribute the field, and the address is just `param_1 + 0x16f4`. Never append a symbol for `DAT_000016f4` / `PTR_LAB_000016f0` (a symbol at address 0x16f4 is meaningless in this image and `&PTR_LAB` will not resolve); spell it `*(float *)(param_1 + 0x16f4)` directly.
+- 2026-11-01 (0x0027c328): a word Ghidra prints as a FLOAT can be an int mode field - comparing it to `1.96182e-44` is the giveaway (that is bit pattern 7; denormals in a float compare only appear when Ghidra typed an int load as float). Spelling such a field as float makes MWCC call its `_dpfle`/`_dpflt` double-compare helpers and the object then fails hstmatch with `MISSING_SYMBOLS _dpfle _dpflt`; the cure is `((int *)p)[k]`, and every float comparison literal needs the `f` suffix (`0.0f`, not `0.0`) for the same reason. Check this BEFORE measuring any item whose pseudo shows an odd denormal constant.
+- 2026-11-01 (0x001e5524): FORCED-SPILL lever. When a body comes up a few words short and the diff shows retail writing a result to a stack local in a call's delay slot (`afa20040 sw v0,64(sp)` right after `jal`) while ours keeps it in a register, the source held that value in a variable whose only use is AFTER a later call. Spell it so: assign the first call's result to a named variable, make the second call, then use the variable - MWCC then homes it instead of extending its register life. Three alternative spellings (unsigned char field, unprototyped getter, separate index locals) all compiled byte-identically, so the spill, not the types, is the lever.
+- 2026-11-01 (0x000c0fb8 / 0x0027c328): ONE-EXTRA-CALLEE-SAVED-REGISTER class (ours `ra+s0-s4` vs retail `ra+s0-s3`, or a save area shifted 16 bytes). WHAT HAS NOT WORKED: renaming or dropping locals (`rec`, `uVar2`, `piVar3` all compiled identically on 0x000c0fb8); folding a pure-copy vector temporary (`fold-v40` identical on 0x0027c328); removing a copy entirely (`drop-vc0` saved words but collapsed the 352-byte frame to 336, so it is a dead end for EXACT). WHAT HAS WORKED: naming one 16-byte temporary per vector (0x0027c328's frame matched 352 exactly), and fixing the copy DIRECTION of the pseudocode's post-call copies (that moved differ 262->257 without touching the frame). Treat the register count as a consequence of the expression tree, not of identifier hygiene; look for a value retail keeps live that our spelling lets die early.
+- 2026-11-01 (0x001b76ec): SPLIT COMPOUND RANGE TESTS - the cheapest shape lever found in this size class. Retail's `if (p != 0 && lo <= f && f < lo + w)` compiles to a short-circuit ladder; MWCC reproduces it only when the source has the `&&`s. Splitting ONE such test into three nested ifs moved differ 254 -> 242 and words 272 -> 271 on a 277-word function, i.e. ~12 differing words from one rewrite. Measured controls on the same item: the `!p` spelling of a `p == 0` test is byte-identical (no effect), and hoisting the two float loads out of the branch (`inline-floats`) does not compile. Apply the split to every compound `&&` range test when a float-heavy item stalls, and do not bother with `!`/`== 0` respellings.
+## Dead locals never grow a frame (2026-11-01, 0x001c8dc8 + 0x000b5900)
+Adding locals that are not live across a call does nothing: five spellings on each of two items (extra
+`float[16]` record copies, a second matrix copy, padded byte arrays, unused 4-word temporaries) all compiled
+**byte-identical** to the base, frame unchanged (240 vs 384, 320 vs 384). MWCC eliminates the dead slots, so a
+short frame is never a declaration problem -- it means the body is missing calls or values that retail keeps
+live. Before trying any slot lever, diff the `jal` list against the draft: a word-count shortfall of ~3 words
+per missing call is the better signal than the frame delta.
+## Data-symbol names that auto-place (2026-11-01)
+Only bare `FUN_<8 hex>`, `DAT_<8 hex>`, `PTR_<8 hex>` and `LAB_<8 hex>` names get an address without a symbol-table
+entry. Descriptive Ghidra data names -- `s_data_menu_game_eff_footprint_bod_002d6c0c`, `PTR_s_data_..._002c0830`,
+or the underscored `_DAT_003386b0` that means "overlaps a smaller symbol" -- resolve only if they exist in the
+module's symbol map, and otherwise hstmatch stops with MISSING_SYMBOLS. Rewrite them: strings and tables become
+`DAT_<addr>` / `PTR_<addr>` (0x000ec204 needed four such rewrites).
+## Float literals need the f suffix (2026-11-01)
+`0.0` is a double in C, so a float comparison against it promotes both sides and MWCC emits a call to `_dpflt`,
+which is not in the symbol map: hstmatch reports MISSING_SYMBOLS `_dpflt` and never measures. Write `0.0f`,
+`1.0f`; hex word constants (`0x3f800000`) are safe. Cost one compile on 0x00123c94.
+## Merge-role ternary recipe (0x0005c810 EXACT, 2026-11-01)
+To make MWCC emit retail's branch-likely single-store max/min instead of a branch with two stores, write the
+three statements in this order:
+```c
+uVar2 = param_2 + 1U;                              /* 1. assign the NEW value first   */
+uVar1 = *(unsigned int *)(param_1 + 0x10);         /* 2. read the OLD field second    */
+*(unsigned int *)(param_1 + 0x10) = (uVar1 > uVar2) ? uVar1 : uVar2;   /* 3. new = FALSE arm, `>` */
+That combination pins the load order (`lw v1,16(a0)` / `addiu a3,a1,1` / `sltu at,a3,v1`) and makes `v1` the
+merge input, giving `beqzl at; move v1,a3; sw v1,16(a0)`. Measured on 0x0005c810 (17 words): **EXACT 17/17**.
+Neighbouring spellings, all on the same 17 words -- do not re-run them: false-arm-new through the loaded
+expression 2 differ; `(uVar1 < uVar2) ? uVar2 : uVar1` 3; `(uVar2 >= uVar1) ? uVar2 : uVar1` 6; both-arms
+if/else 6; `<=` ternary 3; plain `if (uVar2 >= uVar1) uVar1 = uVar2;` 17 differ and 18 words (the flat-if forms
+lose the branch-likely merge entirely, so never start there).
+Companion fact from the same item: build the field address offset-first (`int off = index * stride; p = off + base;`)
+-- base-first costs an extra differing word in the `addu` operand order and then in every use of the pointer.
+## A frame short by bytes nobody touches is a reservation, not a local (2026-11-01, 0x00048d5c)
+When a function's words and branch targets match but its frame is short, check which sp offsets retail actually
+addresses. On 0x00048d5c retail allocates 32 bytes but touches only 4/8/12(sp) -- the extra 16 are never
+referenced, so they cannot be declared: four unused-local spellings (int[4], char[16], float[4], a 4-int struct)
+compiled byte-identically at the smaller frame, consistent with the dead-local rule. Such a gap comes from a
+reservation the source forces indirectly (an outgoing argument/return area: a call with 5+ arguments or a
+struct-returning callee), and the lever is a call shape change, never another declaration.
+## Variadic callees do not reserve the caller's frame (2026-11-01, 0x00048d5c)
+A variadic function saves a0-a3 into its OWN frame (`move s8,sp; addiu a0,s8,24` at 0x00000a00), so declaring
+the prototype `void f(char *, ...)` in the caller fixes call-shape differences (11 -> 10 differ on 0x00048d5c)
+but leaves the caller's frame untouched. A caller-side 16-byte gap that retail never addresses therefore does
+not come from variadic calls; on that item it is still unexplained and the row is parked on it.
+## Own-signature variadic test (2026-11-01, 0x00048d5c)
+Adding `...` to the function under test does not reproduce an unexplained caller-side frame gap: on 0x00048d5c it
+made the body worse (31 differ / 35 words vs 10 / 29), so the target is not variadic. `__builtin_va_list` and
+`__builtin_va_start` are not available to this compiler profile, so a va_list-only spelling cannot be measured.
+Both reservation hypotheses (call shape, own signature) are closed on that row.
+## Frame layout: where untouched bytes are allowed to live (2026-11-01, dsn8 corpus scan)
+Scanning all 51 installed EXACT files (prologue frame vs every sp-relative access) gives one layout rule:
+saves are packed at the TOP (ra at frame-4 unless a top-area local exists) and never-addressed bytes sit at the
+BOTTOM, where they are the o32 16-byte minimum/home area.
+  * close_handle_00062780.c -- frame 16, saves s0@8 + ra@12, 8 untouched bytes at 0..7; the source has no
+    locals at all, so the gap is ABI layout, not a source construct.
+  * emit_idx_0006e094.c -- frame 32, saves f20@16, s0@24, ra@28, 16 untouched bytes at 0..15. Deleting its two
+    unused parameters still compiles to frame 32, so the gap is not the parameter list either.
+  * switch_state_0022fcdc.cpp -- frame 32, saves at 4/8/12 and a REAL 16-byte local at 16..31
+    (`float local_10[4]`, stored at 16/20/24/28 and indexed via `addu v0,v0,sp`): the only TOP-area case, and
+    it is touched.
+Consequence: an untouched TOP-of-frame area has no corpus precedent. MWCC never allocates a local the code does
+not touch (V12), and it reserves a vararg save area only when unnamed argument registers remain: 8 named
+parameters + `...` is byte-identical to the non-variadic body (measured on 0x00048d5c), while 5/6/7 named
+parameters add the t1..t3 stores (+1..+3 words). A row whose only residual is a short frame with an untouched
+TOP area is therefore not reachable from ordinary C in this lane -- park it instead of hunting declarations.

@@ -565,6 +565,7 @@ def build_locked(module: str, args: argparse.Namespace) -> int:
     print(f"  {len(prepared)} sources prepared, {len(report['excluded'])} excluded")
     link_and_compare(module, retail, prepared, out_dir, obj_dir, report, args)
     report["seconds"] = round(time.time() - t0, 1)
+    report["built"] = time.strftime("%Y-%m-%d", time.gmtime())          # the date tools/hstprogress.py shows for T2
     rep_path = ROOT / "try" / "build" / (f"{module}-report.json" if public else f"{module}-private-report.json")
     if getattr(args, "report_dir", None):                # an experiment: its report must not replace the build's
         rep_path = Path(args.report_dir) / rep_path.name

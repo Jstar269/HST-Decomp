@@ -195,6 +195,9 @@ def build_reports(build_dir: Path = BUILD_DIR, mode: str = "public") -> dict[str
             except ValueError:
                 continue
             if isinstance(doc, dict) and "module" in doc and isinstance(doc.get("t2_source_bytes"), dict)                     and doc.get("build_mode", "private") == mode:
+                # the build's date: the report's own (tools/hstbuild.py writes it), else the day the file was written
+                doc.setdefault("built", datetime.datetime.fromtimestamp(p.stat().st_mtime, datetime.timezone.utc)
+                               .strftime("%Y-%m-%d"))
                 out[doc["module"]] = doc
     return out
 
@@ -211,7 +214,9 @@ def tier_ladder(scope_bytes: int, t1_bytes: int, reports: dict[str, dict], publi
             for path, nbytes in (report.get("t3_source_bytes") or {}).items():
                 if path.startswith("src/") and (public_paths is None or path in public_paths):
                     t3 += nbytes
+    built = max((r["built"] for r in reports.values() if r.get("built")), default=None)
     return {"scope_bytes": scope_bytes, "t1_bytes": t1_bytes, "t2_bytes": t2, "t3_bytes": t3, "t4_bytes": 0,
+            "t2_built": built,
             "t1_percent": round(100 * t1_bytes / scope_bytes, 3), "t2_percent": round(100 * t2 / scope_bytes, 3),
             "t3_percent": round(100 * t3 / scope_bytes, 3), "t4_percent": 0.0, "strict_percent": 0.0}
 
@@ -338,20 +343,27 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
         *rows,
         f"| **Both** | {t['matched_functions']:,} / {t['functions']:,} | {t['matched_code_bytes']:,} / {t['code_bytes']:,} | "
         f"{t['percent_code_bytes']:.3f} % |"])
-    # The plain-language summary at the top of the README: the two figures decompilation projects usually report
-    # (code matched, and how much of the game the whole build reproduces), then the project's own stricter figure.
+    # The plain-language summary at the top of the README, laid out as lbp-psp-decomp's (tools/lbppublish.py): the
+    # two tier-1 figures the trackers show (code and functions matched), how much of the game the whole build
+    # reproduces (tier 2, dated by its build), then the project's own stricter figure.
+    built = ladder.get("t2_built")
     glance = "\n".join([
-        "| | Progress | What it means |",
+        "| | Progress | What it counts |",
         "|---|---|---|",
-        f"| **Code matched** | **{t['percent_code_bytes']:.1f}%** | {t['matched_functions']:,} of the "
-        f"{t['functions']:,} game functions are rewritten as C or C++ that compiles to the game's exact bytes. "
-        "This is the figure decompilation trackers such as [recomp.fyi](https://recomp.fyi) show. |",
-        f"| **Built from source** | **{ladder['t2_percent']:.1f}%** | The share of the game's program files that "
-        "the full build already reproduces, byte for byte, from this source. |",
+        f"| **Code matched** (T1) | **{t['percent_code_bytes']:.1f}%** | {t['matched_code_bytes']:,} of the "
+        f"{t['code_bytes']:,} code bytes of the game's functions come from C or C++ that compiles, function by "
+        "function, to the game's exact bytes. |",
+        f"| **Functions matched** (T1) | **{100 * t['matched_functions'] / t['functions']:.1f}%** | "
+        f"{t['matched_functions']:,} of the {t['functions']:,} game functions. |",
+        f"| **Built from source** (T2) | **{ladder['t2_percent']:.1f}%** | The share of the game's program files "
+        "that the whole build reproduces, byte for byte, from this source. |",
         "",
-        "The project's own finish line is stricter: the whole build must also work when moved to another address, "
-        f"and every source must be reviewed by a person. That figure is {ladder['strict_percent']:.1f}%. "
-        f"Measured {date}."])
+        "Code and functions matched are the figures the trackers "
+        "([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The "
+        "project's own finish line is stricter: the whole build must also work when moved to another address, and "
+        f"every source must be reviewed by a person. That figure is {ladder['strict_percent']:.1f}%. Measured {date} "
+        "with `python tools/hstprogress.py`"
+        + (f"; built from source by the whole-module build of {built}." if built and built != date else ".")])
     k, c = kinds["kinds"], kinds["classes"]
     unknown = f", and {k['unknown']:,} have no known note kind" if k.get("unknown") else ""
     breakdown = wrap(
