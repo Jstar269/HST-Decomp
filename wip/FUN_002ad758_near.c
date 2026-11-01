@@ -36,7 +36,7 @@ void FUN_002ad758(int mask, char *base, int idx)
             e = (unsigned char *)base + id * 20 + 0x1058;
         else
             e = 0;
-        if ((unsigned)(*e - 4) < 2)
+        if ((unsigned)(*e - 4) <= 1)
             continue;
         if (FUN_002acd60(base, idx, id) == 0)
             continue;
@@ -47,5 +47,5 @@ void FUN_002ad758(int mask, char *base, int idx)
         }
     }
 }
-// NEAR 93/93, 7 words: retail uses the a2 param in the bnez and puts 'move s4,a2' in its delay slot; ours copies s4 first (same for all 4 spellings tried: if/ternary/if(!)/early-assign). Second diff 0x2ad834 sltiu at vs v1 is allocator choice.
-// near miss from lane dsn3 (unreviewed)
+// NEAR 93/93, 5 words: retail uses the a2 param in the bnez and puts 'move s4,a2' in its delay slot; ours homes s4 first and branches on s4. Comparison (unsigned)(*e - 4) <= 1 resolved sltiu at vs v1.
+// improved by lane dsn5 (unreviewed): 7 -> 5 differing words

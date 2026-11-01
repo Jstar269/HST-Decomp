@@ -8,7 +8,7 @@ extern "C" void FUN_00051398(int, float);
 extern "C" void FUN_00051894(int, int, float, float, float, float, float, float, float, float, float);
 extern "C" void FUN_0005185c(int);
 extern "C" void FUN_000503d0(int);
-extern "C" int DAT_002d11c0, DAT_002d11c4;
+extern "C" volatile int DAT_002d11c0, DAT_002d11c4;
 extern "C" char DAT_00311170[];
 struct Obj { int h; float f4, f8, f12, f16, f20, f24, f28; };
 extern "C" void FUN_00063ebc(Obj *o, float a, float b)
@@ -41,7 +41,7 @@ extern "C" void FUN_00063ebc(Obj *o, float a, float b)
   unsigned cl = DAT_002d11c0;
   if (v1 >= (unsigned)DAT_002d11c0) {
     cl = DAT_002d11c4;
-    if (v1 <= (unsigned)DAT_002d11c4) cl = v1;
+    if ((unsigned)DAT_002d11c4 < v1) cl = v1;
   }
   int s2 = (cl << 24) | 0x00808080;
   for (int i = 0; i < 4; i++) {
@@ -56,12 +56,20 @@ extern "C" void FUN_00063ebc(Obj *o, float a, float b)
       float f15 = f26 + f24 * fj;
       float f17 = 16.0f + f13;
       float f19 = f15 + f24;
-      FUN_00051894(s3, s2, f23, f22, f13, f15, g20, f17, f21, f19, f28);
+      FUN_00051894(s3, s2, f23, f13, f22, f15, g20, f17, f21, f19, f28);
     }
   }
   FUN_0005185c(s3);
-  if (o->f4 < 0.0f) FUN_000503d0((int)DAT_00311170);
   }
+  if (o->f4 >= 0.0f) FUN_000503d0((int)DAT_00311170);
 }
-// PARKED DEFINITIVELY at 176/182 (99 differ). Fixes landed: branch order/polarity, temp path drops 51714/51478, DAT_00311170 symbol -> lui+addiu, unsigned sltu clamp with a0 result. Residual: float load colour (16-land vs 12), clamp block layout, 6-word short tail; three targeted variants per instruction did not close it.
-// near miss from lane dsn3 (unreviewed)
+// PARKED at 180/182 (96 differ, first +0x50; pass 215, 3 compiles). Fixed this pass and measured:
+// the clamp globals are VOLATILE (retail issues two loads per global, four in total - the six words
+// the park was short), the inner clamp test is `hi < v1` (retail's beqzl + move a0,v1), and the
+// destroy block sits OUTSIDE the (b>0) guard firing on f4 >= 0 (retail's early bc1t targets the f4
+// test at 0x6412c, and c.nge.s+bc1tl jumps to the epilogue when f4 < 0). The call passes the 16*j
+// value in f13 and f22 in f14, matching retail. Residual, aligned: 2 words of colour - the tail test
+// loads f4 into f1 where retail uses f12 - plus a 2-word block-layout gap in the clamp (retail keeps
+// the keep-arm inline with `b 0x64088` over an out-of-line else and a redundant `b`+nop after the
+// inner `move a0,v1`), which is what leaves the +0x50 displacement 8 bytes short.
+// improved by lane dsn3 (unreviewed): 99 -> 96 differing words
