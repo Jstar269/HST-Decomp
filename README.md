@@ -50,18 +50,27 @@ The project's own finish line is stricter: the whole build must also work when m
 Decompilation projects usually count a game as done when both numbers reach 100%. Charts and history are in the
 [progress report](docs/PROGRESS.md).
 
-## Check the matches yourself
+## Contribute, or check the matches yourself
 
-The repository isn't open to outside contributions yet ([CONTRIBUTING.md](CONTRIBUTING.md)). You can re-check every
-published match on your own machine:
+Contributions are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) says what you need and what a pull request contains,
+and issues labelled [good first issue](https://github.com/Jstar269/hst-decomp/labels/good%20first%20issue) are small
+functions to start with. Every task here needs your own copy of the game. You can also re-check every published
+match on your own machine:
 
 1. Bring your own copy of the game. The tools need its two executables in decrypted form; this repository contains
    no decryption code and does not explain how to decrypt them.
 2. Install the compilers in WSL and set up the campaign directory: [Setup](docs/GUIDE.md#setup).
 3. Run `python tools/hstmatch.py --all`.
 
-[CONTRIBUTING.md](CONTRIBUTING.md) describes how a function is matched, and the compiler lessons are in
-[`docs/MWCC-NOTES.md`](docs/MWCC-NOTES.md).
+**Where does a fix belong?** If the game misbehaves in the recompiled player, the cause is usually general: a missing
+or wrong system-call behaviour, an instruction form, a display-list command or a build step. That work belongs in
+[Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp), where it helps every game and needs no disc to test.
+Work belongs here only when it rebuilds a function's source so that the compiled bytes equal the original, and it
+needs your own copy of the game. Names and structure learned here can label Nakagawa's generated code, but no decomp
+source is copied into it.
+
+The compiler lessons are in [`docs/MWCC-NOTES.md`](docs/MWCC-NOTES.md). Never post bytes, disassembly or decompiler
+output of the game to web tools such as decomp.me, pastebins or public issues.
 
 ## Progress in detail
 

@@ -26,6 +26,8 @@ import unittest
 from pathlib import Path
 
 REAL = Path(__file__).resolve().parents[1]
+# tools/hstlane.py runs the maintainers' agent lanes and is not published (tools/hstpublish.py PRIVATE_PATHS)
+HAVE_LANE = (REAL / "tools" / "hstlane.py").is_file()
 sys.path.insert(0, str(REAL / "tools"))
 import hstproof as P  # noqa: E402
 
@@ -152,7 +154,8 @@ def setUpModule() -> None:
     BASE = WORK / "base"
     (BASE / "tools").mkdir(parents=True)
     for f in TOOL_FILES:
-        shutil.copy2(REAL / "tools" / f, BASE / "tools" / f)
+        if f != "hstlane.py" or HAVE_LANE:
+            shutil.copy2(REAL / "tools" / f, BASE / "tools" / f)
     shutil.copytree(REAL / "symbols", BASE / "symbols")
     shutil.copytree(REAL / "include", BASE / "include")
     (BASE / "data").mkdir()
@@ -313,6 +316,7 @@ class Wiring(GateCase):
             fh.write("/* edited after staging */\n")
         self.assertCheckFails("source changed", args=("--staged",))
 
+    @unittest.skipUnless(HAVE_LANE, "tools/hstlane.py is maintainer-only")
     def test_harvest_promotes_and_removes_what_the_gate_refuses(self) -> None:
         lane = self.dir / "ext" / "lane1"
         for d in ("src/eboot", "symbols", "wip", "docs"):
@@ -334,6 +338,7 @@ class Wiring(GateCase):
         self.sb.write(f"wip/{name}", main_text)
         (lane / "wip" / name).write_text(lane_text, encoding="utf-8")
 
+    @unittest.skipUnless(HAVE_LANE, "tools/hstlane.py is maintainer-only")
     def test_harvest_replaces_a_wip_file_only_with_fewer_differing_words(self) -> None:
         lane = self.dir / "ext" / "lane2"
         for d in ("src/eboot", "symbols", "wip", "docs"):

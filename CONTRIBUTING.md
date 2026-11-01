@@ -1,10 +1,72 @@
 # Contributing
 
-This guide describes how functions are matched, installed and documented in this repository.
+Contributions are welcome: matched functions, near misses with notes, compiler lessons, tool fixes and documentation.
+This guide covers what you need, how a function is matched and checked, and what a pull request must contain.
+Contributions are licensed as [Licensing](docs/GUIDE.md#licensing) in the project guide says: GPL-3.0-or-later for
+`src/`, `wip/` and `symbols/`, MIT for the tools, documentation and headers. By opening a pull request you confirm that
+you wrote the change (or name where it came from, below) and that you may submit it under those licences.
 
-The repository is not yet open to outside contributions. Contributions are licensed as [Licensing](docs/GUIDE.md#licensing) in the project guide says:
-GPL-3.0-or-later for `src/`, `wip/` and `symbols/`, MIT for the tools, documentation and headers. This guide is for the
-owner and for anyone the owner invites.
+**Where does a fix belong?** If the game misbehaves in the recompiled player, the cause is usually general: a missing
+or wrong system-call behaviour, an instruction form, a display-list command or a build step. That work belongs in
+[Nakagawa Recomp](https://github.com/Jstar269/nakagawa-recomp), where it helps every game and needs no disc to test.
+Work belongs here only when it rebuilds a function's source so that the compiled bytes equal the original, and it
+needs your own copy of the game. Names and structure learned here can label Nakagawa's generated code, but no decomp
+source is copied into it.
+
+## What you need
+
+- **Your own copy of the game** (Hot Shots Tennis: Get a Grip, UCUS98701, North America, version 1.01) and its two
+  executables decrypted on your own machine with a tool of your choice. This repository contains no game data and no
+  decryption code, and nothing in it downloads the game. [Setup](docs/GUIDE.md#setup) lists the two files and the
+  SHA-256 each decrypted file must have; `tools/hstbootstrap.py` refuses any other.
+- **Windows with WSL** (Ubuntu, with `libc6-i386` for the 32-bit compilers) and **Python 3.12 or newer** with no
+  third-party packages. The tools run on the Windows side and call the compilers inside WSL.
+- **The compilers, which you install yourself** (they are proprietary or third-party and are never in this
+  repository; [THIRD_PARTY.md](THIRD_PARTY.md) records each one's terms):
+  - `mwccpsp` 3.0.1 build 219, the compiler of the game code, from
+    [decomp.me's compiler kits](https://github.com/decompme/compilers), run through
+    [wibo](https://github.com/decompals/wibo);
+  - the decomp.me `psp-gcc-1.3.1` and `psp-gcc-1.7.1` kits, for the SDK and newlib code (`cc=gcc131-*`,
+    `cc=gcc171-*` sources);
+  - PSPDEV binutils (`psp-ld`, `psp-objcopy`, `psp-objdump`) from a [pspdev release](https://github.com/pspdev/pspdev/releases);
+  - only for the few `cc=gcc402x-*` sources: the open-source GCC 4.0.2 PSP build that
+    [lbp-psp-decomp](https://github.com/Jstar269/lbp-psp-decomp) builds from GNU and pspdev sources
+    (`toolchain/gcc4/` there).
+
+  [Setup](docs/GUIDE.md#setup) gives the directory layout the tools expect and the `hst-config.json` keys
+  (`mwcc_native`, `gcc_home`, `gcc4_home`, `pspdev_bin`, `campaign_root`).
+
+## Setting up
+
+Follow [Setup](docs/GUIDE.md#setup) in the project guide, then check that one function builds:
+
+```
+python tools/hstconfig.py check
+python tools/hstmatch.py src/eboot/FUN_00000000.c
+```
+
+`hstconfig.py check` lists every key; keys that only maintainer tools use (`newlib_home`, `ghidra_headless`,
+`ext_root` and the like) show `UNSET`, and that is fine for matching. Before your first change, run
+`python tools/hstmatch.py --all --parallel 8` once: every published source should report `EXACT`, which proves your
+setup (about an hour on a fast machine).
+
+## Never allowed
+
+These hold for every file, commit, pull request, issue and comment, here and anywhere else:
+
+- **No game data.** No retail or decrypted modules, no disassembly dumps or listings of the game, no hex dumps, no
+  data files, images or audio taken from the disc, no keys. Your own inputs stay in your campaign directory, outside
+  the repository (`build/` and `try/` are gitignored for the same reason).
+- **No fake matches.** No `asm` that emits instructions (except the inline VFPU rule below), no `.word`/`.byte`
+  directives, no included binaries, no `extra=` flags or byte masking in `src/`. A match is the compiler's own output
+  from C or C++.
+- **Nothing derived from the disc on web tools.** Do not post retail bytes, disassembly or decompiler output of the
+  game to decomp.me scratches, pastebins, chat services, AI web services or public issues. Work stays on your
+  machine; in issues and pull requests, addresses, file names and tool output (`hstmatch.py`, `hstdiff.py` status
+  lines) are fine.
+- **No Sony SDK reconstructions** (see the compiler notes below), no compiler or SDK header text, and no code from
+  another project without its notice and an entry in `THIRD_PARTY.md`.
+- **No private material**: no paths that name your user account, no tokens or keys, no personal data.
 
 ## Ground rules
 
@@ -32,15 +94,6 @@ owner and for anyone the owner invites.
   the same folder and file name never share build products.
 - Do not search recursively (`grep -r`) outside `src/`, `wip/`, `docs/`, `symbols/`, `include/` and your own `try/`
   directory. The campaign directory and `build/` can hold gigabytes.
-
-## Setting up
-
-Follow [Setup](docs/GUIDE.md#setup) in the project guide, then check that one function builds:
-
-```
-python tools/hstconfig.py check
-python tools/hstmatch.py src/eboot/FUN_00000000.c
-```
 
 ## Method
 
@@ -194,12 +247,40 @@ The main points, as a start:
 
 ```
 python tools/hstmatch.py <every file you added or changed>     # EXACT n/n
-python tools/hstlint.py                                         # no header findings
+python tools/hstlint.py --show header                          # none of your files listed
+python tools/hstprcheck.py --base origin/main                  # what CI checks on your pull request
 ```
 
-When a change adds files, `python tools/hstreuse.py check` confirms that every tracked file is covered by the licence
-map (`REUSE.toml`); new library sources need `python tools/hstreuse.py newlib --write` first. `ORIGINS.json` is a
-snapshot made by `python tools/hstorigin.py`; refresh it before a release (`hstpublish.py` classifies afresh).
+`hstprcheck.py` needs no game or compiler: it refuses binary files, game data, never-versioned paths (`build/`,
+`try/`, `hst-config.json`), personal paths and tokens, disassembly-like listings, changed lines in `symbols/`, sources
+without a valid header or note, and anything the fake-match gate refuses. When a change adds files,
+`python tools/hstreuse.py check` confirms that every tracked file is covered by the licence map (`REUSE.toml`); new
+library sources need `python tools/hstreuse.py newlib --write` first. `ORIGINS.json` is a snapshot made by
+`python tools/hstorigin.py`; refresh it before a release (`hstpublish.py` classifies afresh).
 
 For a change that touches many sources, `python tools/hstmatch.py --all` is the full regression (it shares `build/`
 with any concurrent run, so run one at a time).
+
+## Pull requests
+
+Fork the repository, make a branch, and open a pull request against `main`. Keep one topic per pull request: one
+function, a family of clones of one function, one compiler lesson, or one tool fix.
+
+A pull request contains:
+
+- the sources, each with its header and a true line-2 note (`Hand-written reconstruction ...` when you wrote it;
+  name the generator tag when you started from a generated candidate), and any appended `symbols/` lines;
+- in the description: the `python tools/hstmatch.py <files>` output showing `EXACT` for each source, what you
+  changed from any starting candidate, and, if you used an AI tool, which one (the source must still be work you
+  can explain and stand behind);
+- for a near miss in `wip/`: the differing words and what you ruled out, as trailing `//` comments.
+
+What happens next: CI runs the checks above on the pull request (a first-time contributor's run waits for the
+maintainer's approval). The maintainer reviews the change and **re-verifies every source with the maintainers' tools
+before accepting it**: the source is compiled and compared against the retail bytes again and passes the promotion
+gate, whatever the pull request's own output said. This repository is published from the maintainer's own tree, so
+an accepted pull request is not merged with the button: the change is applied there, credited to you in the commit
+and in the next publish commit's message, and the pull request is closed with a link to that commit.
+
+Not accepted: anything under "Never allowed" above, Sony SDK reconstructions, sources that are not `EXACT`, edits to
+existing `symbols/` lines, and tool changes mixed into a matching change.

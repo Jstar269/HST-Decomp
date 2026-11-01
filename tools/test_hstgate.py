@@ -85,7 +85,8 @@ class WiringTests(unittest.TestCase):
         self.assertIn('status, detail = "EXACT_FAILS_GATE"', text)
 
     def test_hstlane_harvest_refuses_and_hstlint_reports(self) -> None:
-        self.assertIn("hstgate.refusals(hstgate.check_file(p, src_root))", self.source("hstlane.py"))
+        if (Path(__file__).resolve().parent / "hstlane.py").is_file():   # maintainer-only, not published
+            self.assertIn("hstgate.refusals(hstgate.check_file(p, src_root))", self.source("hstlane.py"))
         self.assertIn('flags["gate"]', self.source("hstlint.py"))
 
     def test_check_file_uses_the_tree_of_the_path(self) -> None:
@@ -113,7 +114,9 @@ class WiringTests(unittest.TestCase):
                 elif found:
                     idioms.append(p.name)
         self.assertEqual(refused_files, [])
-        self.assertEqual(sorted(idioms), ["str_copy_n_0006f644.c", "str_copy_n_00070e04.c"])
+        # the two known idiom sources are Sony SDK code, which the public tree does not carry (hstpublish.py)
+        known = ["str_copy_n_0006f644.c", "str_copy_n_00070e04.c"]
+        self.assertEqual(sorted(idioms), [n for n in known if any((root / "src").rglob(n))])
 
 
 class VfpuRuleTests(unittest.TestCase):

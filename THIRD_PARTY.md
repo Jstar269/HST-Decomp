@@ -66,6 +66,17 @@ What was checked, against the upstream files the 61 `hstnewlib.py` direct source
   ("Library source: newlib libm kf_rem_pio2.c ...") and says "adapted by hand": they were adapted by hand, not run
   through the preprocessor, and the Sun notice is kept in their comment. `wip/ieee754_powf_00008544.c` carries the
   Sun notice in summary form.
+- **Hand-adapted sources added since (2026-10-27 onwards).** The counts above describe the preprocessed sources.
+  Since then 22 more newlib functions were adapted by hand in `EBOOT.BIN` (C library: `fflush`, `__sfp`, `_fwalk`,
+  `_setlocale_r`, `printf`, `srand`, `sprintf`, `sscanf`, `_sscanf_r`, `strtof`, `vsprintf`; math library: `cos`,
+  `fabs`, `finite`, `isinf`, `isnan`, `sin`, `__kernel_cosf`, `cosf`, `fabsf`, `sinf`, `tanf`), with 18
+  address-substituted clones in the Sharing module; with the two `kernel_rem_pio2f` sources that makes 24
+  hand-adapted sources. Their note names the upstream file but not the release,
+  and most do not repeat the upstream notice. `tools/hstreuse.py` takes the notice of each from the upstream file
+  (`ADAPTED_NOTICES`, derived with `python tools/hstreuse.py adapted` from newlib 1.13.0, 1.14.0 and 1.15.0: the
+  licence is the same in all three, and the copyright statements are the union), so `REUSE.toml` gives each of them
+  its newlib licence and copyright, and `third_party/newlib/README.md` lists them. Until 2026-11-01 these sources
+  were covered only by the generic `src/**` annotation, because the parser could not read their note.
 
 ### Compiler headers: GNU CC text is gone
 

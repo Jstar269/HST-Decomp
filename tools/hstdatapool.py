@@ -149,15 +149,18 @@ def site_index(refs_by_target: dict[int, list[Ref]], region: tuple[int, int]) ->
                   for r in rs if r.kind == "addiu")
 
 
-_POINTER_SITES: dict[int, list[int]] = {}
+# id(table) -> (table, sites): the entry keeps its table alive, so the id cannot be reused by another table
+_POINTER_SITES: dict[int, tuple[dict, list[int]]] = {}
 
 
 def pointer_sites(refs_by_target: dict[int, list[Ref]]) -> list[int]:
     """Sorted sites of every R_MIPS_32 relocation (a pointer stored in data), cached per reference table."""
     key = id(refs_by_target)
-    if key not in _POINTER_SITES:
-        _POINTER_SITES[key] = sorted(r.site for rs in refs_by_target.values() for r in rs if r.kind == "ptr")
-    return _POINTER_SITES[key]
+    cached = _POINTER_SITES.get(key)
+    if cached is None or cached[0] is not refs_by_target:
+        cached = (refs_by_target, sorted(r.site for rs in refs_by_target.values() for r in rs if r.kind == "ptr"))
+        _POINTER_SITES[key] = cached
+    return cached[1]
 
 
 def runs_of(fn: tuple[int, int], refs_by_target: dict[int, list[Ref]], targets_sorted: list[int], blob: bytes,

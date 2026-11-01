@@ -22,7 +22,10 @@ COPYING* and *.license files.
 The newlib annotations are derived from the sources themselves: each newlib-derived source in src/ is the upstream
 file preprocessed with its comments kept, so the notices that appear in the file (from the upstream file and from
 the newlib headers it includes) say which licences apply. A source whose upstream file has no notice of its own
-(NO_OWN_NOTICE) falls under newlib's default copyright, "Red Hat Incorporated" in COPYING.NEWLIB.
+(NO_OWN_NOTICE) falls under newlib's default copyright, "Red Hat Incorporated" in COPYING.NEWLIB. A source adapted
+by hand (its note names no release) takes the notices of its upstream file from ADAPTED_NOTICES, which
+`python tools/hstreuse.py adapted` derives from the newlib trees; a clone without a note of its own takes its
+exemplar's.
 """
 from __future__ import annotations
 
@@ -69,8 +72,50 @@ ID_ORDER = ["LicenseRef-Newlib-UCB-BSD-4-Clause", "LicenseRef-Newlib-UCB-BSD-3-C
 GPL = "GPL-3.0-or-later"
 
 LIB_NOTE = re.compile(r"Library source: newlib (?P<ver>\d+\.\d+\.\d+) (?P<dir>\w+)/(?P<file>\w+)\.c function (?P<fn>\w+)")
-ADAPTED_NOTE = re.compile(r"Library source: newlib (?P<dir>libm) (?P<file>\w+)\.c function (?P<fn>\w+)")
+# Hand-adapted sources name no release: "newlib libm <file>.c" or "newlib libc <directory> <file>.c".
+ADAPTED_NOTE = re.compile(r"Library source: newlib (?P<dir>libm|libc \w+) (?P<file>\w+)\.c function (?P<fn>\w+)")
 IDENTIFIED_NOTE = re.compile(r"Identified as newlib (?P<dir>libm) (?P<file>\w+)\.c \((?P<fn>\w+)")
+NEWLIB_RELEASES = ("1.13.0", "1.14.0", "1.15.0")
+RED_HAT_DEFAULT_1_15 = "Copyright (c) 1994-2006 Red Hat, Inc."   # COPYING.NEWLIB of 1.15.0, notice (1)
+# The notices of the upstream file of each hand-adapted source. These sources were adapted by hand without
+# recording the newlib release and most do not repeat the upstream notice, so the notice comes from the upstream
+# file itself, read in all three releases: the licence is the same in each, and the copyright statements are the
+# union over the releases (fflush.c added a year in 1.15.0; s_isinf.c and s_isnan.c moved from libm/math to
+# libm/common). A file with no notice of its own falls under the default copyright of COPYING.NEWLIB.
+# Regenerate with `python tools/hstreuse.py adapted` (needs the newlib_home trees) when a new kind is added.
+# key: the note's "<dir>/<file>" -> (upstream file, licence ids, copyright statements)
+ADAPTED_NOTICES = {
+    "libc/locale/locale": ("libc/locale/locale.c", ("LicenseRef-Newlib-Red-Hat",),
+                           (RED_HAT_DEFAULT_1_15, *RED_HAT_DEFAULT.values())),
+    "libc/stdio/fflush": ("libc/stdio/fflush.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                          ("Copyright (c) 1990 The Regents of the University of California",
+                           "Copyright (c) 1990, 2006 The Regents of the University of California")),
+    "libc/stdio/findfp": ("libc/stdio/findfp.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                          ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdio/fwalk": ("libc/stdio/fwalk.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                         ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdio/printf": ("libc/stdio/printf.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                          ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdio/sprintf": ("libc/stdio/sprintf.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                           ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdio/sscanf": ("libc/stdio/sscanf.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                          ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdio/vsprintf": ("libc/stdio/vsprintf.c", ("LicenseRef-Newlib-UCB-Advertising-Notice",),
+                            ("Copyright (c) 1990 The Regents of the University of California",)),
+    "libc/stdlib/rand": ("libc/stdlib/rand.c", ("LicenseRef-Newlib-Red-Hat",),
+                         (RED_HAT_DEFAULT_1_15, *RED_HAT_DEFAULT.values())),
+    "libc/stdlib/strtod": ("libc/stdlib/strtod.c", ("LicenseRef-Newlib-Gay-AT-T",), ("Copyright (c) 1991 by AT&T",)),
+    **{f"libm/{f}": (f"libm/math/{f}.c", ("LicenseRef-Newlib-Sun-fdlibm",),
+                     ("Copyright (C) 1993 by Sun Microsystems, Inc.",))
+       for f in ("ef_pow", "kf_cos", "kf_rem_pio2", "s_cos", "s_fabs", "s_sin", "sf_cos", "sf_fabs", "sf_sin",
+                 "sf_tan")},
+    "libm/s_finite": ("libm/common/s_finite.c", ("LicenseRef-Newlib-Sun-fdlibm",),
+                      ("Copyright (C) 1993 by Sun Microsystems, Inc.",)),
+    "libm/s_isinf": ("libm/common/s_isinf.c", ("LicenseRef-Newlib-Red-Hat",),
+                     (RED_HAT_DEFAULT_1_15, *RED_HAT_DEFAULT.values())),
+    "libm/s_isnan": ("libm/common/s_isnan.c", ("LicenseRef-Newlib-Sun-fdlibm",),
+                     ("Copyright (C) 1993 by Sun Microsystems, Inc.",)),
+}
 CLONE_NOTE = re.compile(r"^/\* Clone of (src/\S+) \(hstclone\.py tag \w+\)")
 COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
@@ -122,20 +167,39 @@ class Entry:
         if clone:
             self.kind, self.exemplar = "clone", clone.group(1)
         head = "\n".join(lines[:3])
+        adapted = None
         m = LIB_NOTE.search(head)
         if m:
             self.ver, self.function = m["ver"], m["fn"]
             self.upstream = m["dir"].replace("_", "/", 1) + "/" + m["file"] + ".c"
         else:
             m = ADAPTED_NOTE.search(head) or IDENTIFIED_NOTE.search(self.text[:3000])
+            if m is None and clone:
+                # a clone made before its exemplar carried the library note: the exemplar's note decides
+                exemplar = ROOT / clone.group(1)
+                if not exemplar.is_file():
+                    raise SystemExit(f"{self.rel}: cannot read the newlib note, and its exemplar {clone.group(1)} "
+                                     "is not a source here")
+                source = Entry(exemplar)
+                self.ver, self.function, self.upstream = source.ver, source.function, source.upstream
+                self.ids, self.copyrights, self.in_src = source.ids, source.copyrights, self.rel.startswith("src/")
+                return
             if m is None:
                 raise SystemExit(f"{self.rel}: cannot read the newlib note")
-            self.ver, self.function = None, m["fn"]
-            self.upstream = f"libm/math/{m['file']}.c"
-            self.kind = "hand-adapted" if self.rel.startswith("src/") else "near miss"
+            key = m["dir"].replace(" ", "/") + "/" + m["file"]
+            if key not in ADAPTED_NOTICES:
+                raise SystemExit(f"{self.rel}: hand-adapted newlib source {key}.c has no ADAPTED_NOTICES entry "
+                                 "(run: hstreuse.py adapted)")
+            adapted = ADAPTED_NOTICES[key]
+            self.ver, self.function, self.upstream = None, m["fn"], adapted[0]
+            if not clone:
+                self.kind = "hand-adapted" if self.rel.startswith("src/") else "near miss"
         found = families(self.text)
         copyrights = {c for cs in found.values() for c in cs}
         ids = set(found)
+        if adapted:
+            ids |= set(adapted[1])
+            copyrights |= set(adapted[2])
         if self.ver and (self.ver, self.upstream) in NO_OWN_NOTICE:
             ids.add("LicenseRef-Newlib-Red-Hat")
             copyrights.add(RED_HAT_DEFAULT[self.ver])
@@ -180,8 +244,8 @@ def render_table(entries: list[Entry]) -> str:
     for e in sorted(entries, key=lambda e: e.rel):
         if e.ver:
             version, sha = e.ver, TARBALLS[e.ver]
-        else:   # libm/math/kf_rem_pio2.c and ef_pow.c are byte-identical in 1.13.0, 1.14.0 and 1.15.0
-            version, sha = "1.13.0, 1.14.0, 1.15.0 (identical; not recorded)", "all three"
+        else:   # hand-adapted: release not recorded; the notices are those of the file in all three (ADAPTED_NOTICES)
+            version, sha = "not recorded (notices of 1.13.0, 1.14.0, 1.15.0)", "all three"
         terms = ", ".join(i.removeprefix("LicenseRef-Newlib-") for i in e.ids)
         rows.append(f"| `{e.rel}` | {e.kind} | {version} | `newlib/{e.upstream}` | `{e.function}` | {terms} | "
                     f"{'`' + sha + '`' if sha != 'all three' else sha} |")
@@ -310,13 +374,47 @@ def check_command() -> int:
     return 1 if problems else 0
 
 
+def adapted_command() -> int:
+    """Print, for every hand-adapted newlib source, the notices of its upstream file in each release (the input of
+    ADAPTED_NOTICES). Reads the newlib trees under newlib_home through WSL."""
+    import hstconfig
+    home = hstconfig.wsl_path("newlib_home")
+    classes, _warnings = hstorigin.classify()
+    keys: dict[str, list[str]] = defaultdict(list)
+    for p, c in sorted(classes.items()):
+        text = (ROOT / p).read_text(encoding="utf-8", errors="replace") if c == "newlib" else ""
+        head = "\n".join(text.split("\n", 3)[:3])
+        m = None if LIB_NOTE.search(head) else (ADAPTED_NOTE.search(head) or IDENTIFIED_NOTE.search(text[:3000]))
+        if m:
+            keys[m["dir"].replace(" ", "/") + "/" + m["file"]].append(p)
+    for key, paths in sorted(keys.items()):
+        top, name = key.split("/", 1)[0], key.rsplit("/", 1)[1]
+        dirs = ["libm/math", "libm/common"] if top == "libm" else [key.rsplit("/", 1)[0]]
+        print(f"{key}: {len(paths)} source(s){'' if key in ADAPTED_NOTICES else '  (NOT IN ADAPTED_NOTICES)'}")
+        for ver in NEWLIB_RELEASES:
+            for d in dirs:
+                r = subprocess.run(["wsl.exe", "-e", "sh", "-c", f'cat "{home}/{ver}/newlib-{ver}/newlib/{d}/{name}.c"'],
+                                   capture_output=True)
+                if r.returncode == 0:
+                    found = families(r.stdout.decode("utf-8", "replace"))
+                    print(f"  {ver} {d}/{name}.c: " + ("; ".join(f"{i}: {sorted(s)}" for i, s in sorted(found.items()))
+                                                       or "no notice of its own (COPYING.NEWLIB default)"))
+                    break
+            else:
+                print(f"  {ver}: not in {' or '.join(dirs)}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
     n = sub.add_parser("newlib")
     n.add_argument("--write", action="store_true")
+    sub.add_parser("adapted", help="print the upstream notices of the hand-adapted sources (needs newlib_home)")
     args = ap.parse_args()
+    if args.cmd == "adapted":
+        return adapted_command()
     return check_command() if args.cmd == "check" else newlib_command(args.write)
 
 

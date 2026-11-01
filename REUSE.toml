@@ -64,6 +64,17 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
+  "src/eboot/FUN_00015e54.c",
+  "src/sharing_main/FUN_00015e54_00015e54.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 1991 by AT&T",
+]
+SPDX-License-Identifier = "LicenseRef-Newlib-Gay-AT-T"
+
+[[annotations]]
+path = [
   "src/eboot/__mcmp_00012370.c",
 ]
 precedence = "override"
@@ -100,6 +111,21 @@ SPDX-FileCopyrightText = [
   "Copyright (c) 1993 Martin Birgmeier",
 ]
 SPDX-License-Identifier = "LicenseRef-Newlib-Gay-AT-T AND LicenseRef-Newlib-OAR AND LicenseRef-Newlib-Birgmeier"
+
+[[annotations]]
+path = [
+  "src/eboot/FUN_0000fea4.c",
+  "src/eboot/FUN_000133f4.c",
+  "src/sharing_main/FUN_0000fea4_0000fea4.c",
+  "src/sharing_main/FUN_000133f4_000133f4.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 1994, 1997, 2001, 2002, 2003, 2004 Red Hat Incorporated",
+  "Copyright (c) 1994, 1997, 2001, 2002, 2003, 2004, 2005 Red Hat Incorporated",
+  "Copyright (c) 1994-2006 Red Hat, Inc.",
+]
+SPDX-License-Identifier = "LicenseRef-Newlib-Red-Hat"
 
 [[annotations]]
 path = [
@@ -155,7 +181,24 @@ SPDX-License-Identifier = "LicenseRef-Newlib-Red-Hat AND LicenseRef-Newlib-OAR A
 
 [[annotations]]
 path = [
+  "src/eboot/FUN_0000a430.c",
+  "src/eboot/FUN_0000b060.c",
+  "src/eboot/FUN_0000b16c.c",
+  "src/eboot/FUN_0000b178.c",
+  "src/eboot/FUN_0000b3bc.c",
+  "src/eboot/FUN_0000b79c.c",
+  "src/eboot/FUN_0000bc34.c",
+  "src/eboot/FUN_0000bcfc.c",
+  "src/eboot/FUN_0000bf34.c",
+  "src/eboot/FUN_0000c000.c",
   "src/eboot/kernel_rem_pio2f_0000a550.c",
+  "src/sharing_main/FUN_0000a448.c",
+  "src/sharing_main/FUN_0000b078.c",
+  "src/sharing_main/FUN_0000b184.c",
+  "src/sharing_main/FUN_0000b190.c",
+  "src/sharing_main/FUN_0000b3d4.c",
+  "src/sharing_main/FUN_0000b7b4.c",
+  "src/sharing_main/FUN_0000bd14.c",
   "src/sharing_main/kernel_rem_pio2f_0000a568.c",
 ]
 precedence = "override"
@@ -189,6 +232,54 @@ SPDX-FileCopyrightText = [
   "Copyright (c) 1993 Martin Birgmeier",
 ]
 SPDX-License-Identifier = "LicenseRef-Newlib-Sun-fdlibm AND LicenseRef-Newlib-OAR AND LicenseRef-Newlib-Birgmeier"
+
+[[annotations]]
+path = [
+  "src/eboot/FUN_0000b388.c",
+  "src/sharing_main/FUN_0000b3a0.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (C) 1993 by Sun Microsystems, Inc.",
+  "Copyright (c) 1994, 1997, 2001, 2002, 2003, 2004 Red Hat Incorporated",
+  "Copyright (c) 1994, 1997, 2001, 2002, 2003, 2004, 2005 Red Hat Incorporated",
+  "Copyright (c) 1994-2006 Red Hat, Inc.",
+]
+SPDX-License-Identifier = "LicenseRef-Newlib-Sun-fdlibm AND LicenseRef-Newlib-Red-Hat"
+
+[[annotations]]
+path = [
+  "src/eboot/FUN_0000f208.c",
+  "src/eboot/FUN_0000fd34.c",
+  "src/eboot/FUN_00012ad0.c",
+  "src/eboot/FUN_000143b0.c",
+  "src/eboot/FUN_00014438.c",
+  "src/eboot/FUN_000144b8.c",
+  "src/eboot/FUN_0001aca4.c",
+  "src/sharing_main/FUN_0000fd34_0000fd34.c",
+  "src/sharing_main/FUN_00012ad0_00012ad0.c",
+  "src/sharing_main/FUN_000143b0_000143b0.c",
+  "src/sharing_main/FUN_00014438_00014438.c",
+  "src/sharing_main/FUN_000144b8_000144b8.c",
+  "src/sharing_main/FUN_0001aca4_0001aca4.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 1990 The Regents of the University of California",
+]
+SPDX-License-Identifier = "LicenseRef-Newlib-UCB-Advertising-Notice"
+
+[[annotations]]
+path = [
+  "src/eboot/FUN_0000f040.c",
+  "src/sharing_main/FUN_0000f040_0000f040.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 1990 The Regents of the University of California",
+  "Copyright (c) 1990, 2006 The Regents of the University of California",
+]
+SPDX-License-Identifier = "LicenseRef-Newlib-UCB-Advertising-Notice"
 
 [[annotations]]
 path = [
