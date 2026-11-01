@@ -12,9 +12,9 @@ the tiers progress is reported in, are defined in [`COMPLETION.md`](COMPLETION.m
   address names from Ghidra (`FUN_0011d894`), and types are provisional. Every note line says "names and types
   await human review" until a person has reviewed the source.
   <!-- hstprogress:begin guide-source-kinds -->
-- Of the 12,777 sources (measured 2026-11-01), 7,213 are address-substituted **clones** of another matched source
+- Of the 12,779 sources (measured 2026-11-01), 7,213 are address-substituted **clones** of another matched source
   (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,860 are such
-  translations corrected by hand, 2,386 are hand-written, 136 are instances of container templates, and 85 are newlib
+  translations corrected by hand, 2,388 are hand-written, 136 are instances of container templates, and 85 are newlib
   library functions translated from newlib sources (37 more are clones of them, counted among the clones), and 44 have
   no known note kind.
 - 122 of the sources are newlib library functions compiled with Sony's `psp-gcc` kits; all others are game code
@@ -216,7 +216,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
   hashed by the toolchain lock). Use it only for functions no gcc131/gcc171 profile reproduces (later-compiler
   shapes: duplicated epilogues, tail calls, word loads where GCC 3.3 narrows).
   <!-- hstprogress:begin guide-profiles -->
-  Measured 2026-11-01, the public sources use `mwcc219` (12,655 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
+  Measured 2026-11-01, the public sources use `mwcc219` (12,657 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
   sources) and `gcc171x-O1` (2 sources).
   <!-- hstprogress:end -->
 - `rodata=0xADDR`, `data=`, `sdata=`, `bss=`, `sbss=`: where the object's sections go when the function refers to
