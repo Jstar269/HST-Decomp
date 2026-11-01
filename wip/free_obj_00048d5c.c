@@ -1,6 +1,4 @@
 /* HSTMATCH module=EBOOT.BIN start=0x00048d5c end=0x00048dd0 symbol=FUN_00048d5c lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x00048d5c end=0x00048dd0 symbol=FUN_00048d5c lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x00048d5c end=0x00048dd0 symbol=FUN_00048d5c lang=c99 */
 extern void FUN_00000a00(char *, ...);
 extern void FUN_00048e6c(int *, int, int);
 

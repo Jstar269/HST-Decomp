@@ -9,14 +9,21 @@ adds or changes:
   binary          a binary file (git sees it as binary, or it holds a NUL byte), or a name the ignore rules keep
                   out for that reason (retail modules, objects, images of discs, archives, compilers, key files)
   place           a path that is never versioned: build/, try/, keys/, Ghidra projects and caches, hst-config.json
-  size            a changed file over 1 MiB (sources are a few kilobytes; nothing a contribution needs is that big)
+  size            a changed file over 1 MiB (sources are a few kilobytes; nothing a contribution needs is that big);
+                  for the append-only compiler log (docs/MWCC-NOTES.md) the limit applies to what is appended, and the
+                  generated objdiff report (docs/objdiff-report.json, one unit per function) has a 32 MiB limit
+  report          that report when its units do not add up to its module figures (tools/hstreport.py unit_problems)
+  log             a changed or deleted line in that log (append only)
   private         an added line with a personal or secret value: a home directory path (C:\\Users\\..., /home/...,
                   /mnt/c/Users/...), a private key block, a GitHub, OpenAI or AWS token
   dump            an added file with more than 16 lines that look like a disassembly listing (an address, an
                   instruction word, a mnemonic): disassembly of the game is never published
   symbols         a deleted or changed line in symbols/ (the symbol maps are append-only)
   header          a source in src/ or wip/ whose first line is not an HSTMATCH header with module, start, end and
-                  symbol, or whose second line is not one of the provenance notes CONTRIBUTING.md lists
+                  symbol, or that repeats the header further down; a source in src/ without one of the provenance
+                  notes CONTRIBUTING.md lists right after the header (tools/hstlint.py provenance_note: one-line
+                  annotations such as a docs/DATA-TABLES.md pointer may come first). A near miss in wip/ needs the
+                  header only (CONTRIBUTING.md, "Near misses")
   gate            a source the fake-match gate refuses (tools/hstgate.py: asm that emits instructions, data
                   directives, code-emitting pragmas, extra= under src/)
 
@@ -39,6 +46,14 @@ import hstlint
 MATCH = "HSTMATCH"
 CONFIG = "hst-config.json"
 MAX_BYTES = 1 << 20
+# Append-only logs (CONTRIBUTING.md, "Compiler notes"): the size limit applies to what a change appends, never to the
+# whole log, which grows with every lesson and is read with tail and grep from fixed line numbers, so it stays one
+# file. Changing or deleting an existing line is refused, as for symbols/.
+APPEND_ONLY_LOGS = ("docs/MWCC-NOTES.md",)
+# The objdiff progress report (tools/hstreport.py) lists every reviewed function of the two game modules, one unit per
+# line, so it is several MiB. It has its own limit, and it must still add up: its units, to the module figures.
+OBJDIFF_REPORT = "docs/objdiff-report.json"
+REPORT_MAX_BYTES = 32 << 20
 BINARY_SUFFIXES = {".o", ".obj", ".elf", ".bin", ".prx", ".pbp", ".iso", ".cso", ".exe", ".dll", ".so", ".a", ".zip",
                    ".7z", ".gz", ".tar", ".gzf", ".rep", ".img", ".dat", ".sfo", ".at3", ".pmf"}
 NEVER = (re.compile(r"^(build|try|keys)/"), re.compile(r"^ghidra/(projects|out|cache|settings)/"),
@@ -78,6 +93,17 @@ def removed_lines(repo: Path, base: str, path: str) -> list[str]:
     return [l[1:] for l in out.splitlines() if l.startswith("-") and not l.startswith("---")]
 
 
+def report_problems(data: bytes) -> list[str]:
+    """Why an objdiff report is not one tools/hstreport.py wrote ([] when its units add up to its modules)."""
+    import json
+
+    import hstreport
+    try:
+        return hstreport.unit_problems(json.loads(data.decode("utf-8")))
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        return [f"not an objdiff report tools/hstreport.py writes ({type(exc).__name__})"]
+
+
 def check(repo: Path, base: str) -> list[str]:
     refusals: list[str] = []
     binaries = binary_paths(repo, base)
@@ -90,7 +116,21 @@ def check(repo: Path, base: str) -> list[str]:
             refusals.append(f"place    {path}: this path is never versioned")
             continue
         data = file.read_bytes() if file.is_file() else b""
-        if len(data) > MAX_BYTES:
+        if path in APPEND_ONLY_LOGS and status == "M":
+            if removed_lines(repo, base, path):
+                refusals.append(f"log      {path}: existing lines changed or deleted (append only)")
+            grown = sum(len(line.encode("utf-8")) + 1 for line in added_lines(repo, base, path))
+            if grown > MAX_BYTES:
+                refusals.append(f"size     {path}: {grown:,} bytes appended (limit {MAX_BYTES:,})")
+                continue
+        elif path == OBJDIFF_REPORT:
+            if len(data) > REPORT_MAX_BYTES:
+                refusals.append(f"size     {path}: {len(data):,} bytes (limit {REPORT_MAX_BYTES:,})")
+                continue
+            problems = report_problems(data)
+            if problems:
+                refusals.append(f"report   {path}: {problems[0]}")
+        elif len(data) > MAX_BYTES:
             refusals.append(f"size     {path}: {len(data):,} bytes (limit {MAX_BYTES:,})")
             continue
         if b"\0" in data:
@@ -108,11 +148,14 @@ def check(repo: Path, base: str) -> list[str]:
         if path.startswith("symbols/") and status == "M" and removed_lines(repo, base, path):
             refusals.append(f"symbols  {path}: existing lines changed or deleted (append only)")
         if re.match(r"^(src|wip)/.*\.(c|cpp)$", path):
-            lines = data.decode("utf-8", "replace").split("\n", 2)
+            text = data.decode("utf-8", "replace")
+            lines = text.split("\n")
             if not HEADER.match(lines[0]):
                 refusals.append(f"header   {path}: line 1 is not a {MATCH} header with module, start, end, symbol")
-            elif len(lines) < 2 or not any(rx.search(lines[1]) for _kind, rx in hstlint.NOTE_KINDS):
-                refusals.append(f"header   {path}: line 2 is not a provenance note CONTRIBUTING.md lists")
+            elif any(ln.lstrip().startswith(f"/* {MATCH} ") for ln in lines[1:]):
+                refusals.append(f"header   {path}: a second {MATCH} header after line 1")
+            elif path.startswith("src/") and hstlint.provenance_note(text)[0] is None:
+                refusals.append(f"header   {path}: no provenance note CONTRIBUTING.md lists right after the header")
             found = hstgate.refusals(hstgate.check_file(file, repo))
             if found:
                 refusals.append(f"gate     {path}: " + "; ".join(str(f) for f in found)[:200])

@@ -295,7 +295,7 @@ DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def source_kinds(classes: dict[str, str], root: Path = ROOT) -> dict:
-    """Public sources in src/ by note kind (line 2, tools/hstlint.py) and by origin class; clones of newlib functions
+    """Public sources in src/ by note kind (hstlint.provenance_note) and by origin class; clones of newlib functions
     are counted separately; and by compiler profile (the header's cc=, absent meaning mwcc219)."""
     import hstlint
     kinds: dict[str, int] = {}
@@ -307,9 +307,7 @@ def source_kinds(classes: dict[str, str], root: Path = ROOT) -> dict:
             continue
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
         lines = text.split("\n", 2)
-        comments = re.findall(r"/\*.*?\*/", text[:4000], re.S)
-        note = comments[1] if len(comments) > 1 and len(lines) > 1 and lines[1].startswith("/*") else ""
-        kind = next((k for k, rx in hstlint.NOTE_KINDS if rx.search(note)), "unknown")
+        kind = hstlint.provenance_note(text)[0] or "unknown"
         kinds[kind] = kinds.get(kind, 0) + 1
         by_class[cls] = by_class.get(cls, 0) + 1
         cc = HEADER_CC.search(lines[0])
@@ -527,7 +525,7 @@ def main() -> int:
         for d in diffs:
             print("  " + d)
         import hstreport
-        report_diffs = hstreport.differences(fig, sc)
+        report_diffs = hstreport.differences(*hstreport.inputs_from(fig, sc, led, classes))
         print("objdiff report (docs/objdiff-report.json): " + ("agrees" if not report_diffs else "DIFFERS"))
         for d in report_diffs:
             print("  " + d)
@@ -553,7 +551,7 @@ def main() -> int:
         import hstviz  # the visuals read the CSV just written
         drawn = [p.relative_to(ROOT).as_posix() for p in hstviz.write()]
         import hstreport  # the objdiff report recomp.fyi reads, from the same figures
-        report = hstreport.write(fig, sc).relative_to(ROOT).as_posix()
+        report = hstreport.write(*hstreport.inputs_from(fig, sc, led, classes)).relative_to(ROOT).as_posix()
         docs = write_blocks(render_blocks(fig, ladder, kinds(), args.date))
         print(f"wrote {JSON_PATH.name}, {CSV_PATH.relative_to(ROOT).as_posix()} ({len(rows)} rows), {', '.join(drawn)}, {report}"
               + (f"; figure blocks in {', '.join(docs)}" if docs else "; figure blocks unchanged"))

@@ -15,8 +15,8 @@ Measured 2026-11-01 from the public sources: 12,779 exact sources and 1,284 near
 | `EBOOT.BIN` code | 1,145,064 B (6,518 functions) | 2,849,076 B (9,804 functions) | 40.191% |
 | `hstp_trans_main.prx` (Sharing Version) code | 1,051,724 B (6,264 functions) | 2,914,004 B (9,830 functions) | 36.092% |
 | Tier 1: function matches | 2,196,788 B | the six modules in scope, 9,275,840 B | 23.683% |
-| Tier 2: whole-module build | 2,771,634 B | the six modules in scope, 9,275,840 B | 29.880% |
-| Tier 3: shifted build | 2,769,610 B | the six modules in scope, 9,275,840 B | 29.858% |
+| Tier 2: whole-module build | 2,865,042 B | the six modules in scope, 9,275,840 B | 30.887% |
+| Tier 3: shifted build | 2,862,642 B | the six modules in scope, 9,275,840 B | 30.861% |
 | Tier 4: strict (reviewed) | 0 B | the six modules in scope, 9,275,840 B | 0.000% |
 
 <!-- hstprogress:end -->
@@ -62,8 +62,13 @@ The daily figures are in [`progress.csv`](progress.csv). The milestone data is i
 ## For trackers
 
 [`objdiff-report.json`](objdiff-report.json) is the same figure in objdiff's report format. A daily workflow
-publishes it as the `UCUS98701_report` artifact, which [recomp.fyi](https://recomp.fyi) reads. It reports code only:
-data is listed as unmatched, so no tracker can show the game as complete early.
+publishes it as the `UCUS98701_report` artifact, which [bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp) and
+[recomp.fyi](https://recomp.fyi) read. Its units are the game's own source files where the program shows them
+([`translation-units.json`](../data/translation-units.json): file names from the debug build's assertions, carried to
+EBOOT.BIN through identical functions and filled in link order), the published sources for the other matched
+functions, one "not yet recovered" unit for each remaining function, and one unit per module for the SDK library code,
+which is counted but not published. So bytematch.dev draws a map of the whole code with a tile per function. Data is
+listed as unmatched, so no tracker can show the game as complete early.
 
 OpenSSF Scorecard ([`scorecards.yml`](../.github/workflows/scorecards.yml)) runs weekly and on pushes to `main`,
 uploading its results to GitHub code scanning.

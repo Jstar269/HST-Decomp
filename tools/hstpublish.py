@@ -48,7 +48,7 @@ EXCLUDED_CLASSES = ("sony-prx", "gcc-unattributed")
 # external agent lanes (they depend on the maintainers' own tool setup). A trailing "/" excludes a whole directory.
 PRIVATE_PATHS = ("docs/research/", "docs/LANE-TASK.md", "docs/AGENT-BRIEF.md", "tools/hstauto.sh", "tools/hstsupervise.sh",
                  "tools/hstlane.py", "tools/hstrestart.sh", "tools/hstpushprep.sh",
-                 "tools/hstexec.py", "tools/test_hstexec.py",
+                 "tools/hstexec.py", "tools/test_hstexec.py", "tools/test_hstlane.py",
                  # the accepted ledger names every proven source, the Sony SDK ones included (tools/hstproof.py)
                  "data/accepted-ledger.jsonl", "data/accepted-journal.jsonl")
 # ---------------------------------------------------------------------------------------------------------------

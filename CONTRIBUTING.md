@@ -176,7 +176,9 @@ source that started from a generated candidate names the generator tag.
   `Clone of src/... (hstclone.py tag X)`, `... (template instance, hsttmpl.py tag X)` and
   `Library source: newlib <release> <dir>/<file>.c function <name>, ...`.
 
-`python tools/hstlint.py` rejects a source without a known note kind.
+A one-line pointer comment, such as a `docs/DATA-TABLES.md` reference, may sit between the header and the note;
+nothing else may. `python tools/hstlint.py` and `python tools/hstprcheck.py` reject a source without a known note kind
+there.
 
 ## Source quality
 
@@ -195,7 +197,8 @@ The owner reviews every source at the end, so aim for the code the developers wr
 ## Near misses
 
 If a function ends within about six differing words but not exact, save your best attempt to
-`wip/<short_name>_<addr8>.cpp` (same header) with trailing `//` comments: what differs and what you ruled out. Files
+`wip/<short_name>_<addr8>.cpp` (the same line-1 header, once; a near miss needs no provenance note) with trailing `//`
+comments: what differs and what you ruled out. Files
 in `wip/` are not built by `--all` and are not verified; they are leads for the next person.
 
 ## Compiler notes
@@ -203,7 +206,8 @@ in `wip/` are not built by `--all` and are not verified; they are leads for the 
 The detailed, address-referenced findings are in [docs/MWCC-DIGEST.md](docs/MWCC-DIGEST.md) (by topic) and
 [docs/MWCC-NOTES.md](docs/MWCC-NOTES.md) (the append-only log). Read the digest before starting; it saves many compiles.
 If you learn something new, append **one dated line** to `MWCC-NOTES.md` that names the function address (append only,
-never rewrite the file):
+never rewrite the file; `tools/hstprcheck.py` refuses a change to an existing line, and its 1 MiB limit applies to what
+you append, not to the whole log):
 
 ```text
 cat >> docs/MWCC-NOTES.md <<'EOF'

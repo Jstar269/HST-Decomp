@@ -1,5 +1,4 @@
 /* HSTMATCH module=EBOOT.BIN start=0x0006b0f4 end=0x0006b154 symbol=FUN_0006b0f4 lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x0006b0f4 end=0x0006b154 symbol=FUN_0006b0f4 lang=c99 */
 void FUN_0006b0f4(int *param_1, int param_2, int *param_3)
 {
   int key = *param_3;

@@ -29,24 +29,24 @@
   {
    "id": "psp-rebuild",
    "title": "PSP rebuild",
-   "progress": 30.70778152849221,
-   "detail": "2,771,634 of 9,025,836 image bytes from source in the whole-module build",
+   "progress": 31.742677354208517,
+   "detail": "2,865,042 of 9,025,836 image bytes from source in the whole-module build",
    "reached": null,
    "regressed": false
   },
   {
    "id": "psp-moddable",
    "title": "Moddable PSP rebuild",
-   "progress": 30.68535701291271,
-   "detail": "2,769,610 of 9,025,836 image bytes from source in the relocated build",
+   "progress": 31.716087019529272,
+   "detail": "2,862,642 of 9,025,836 image bytes from source in the relocated build",
    "reached": null,
    "regressed": false
   },
   {
    "id": "full-rebuild",
    "title": "Every module rebuilt",
-   "progress": 30.70778152849221,
-   "detail": "2,771,634 of 9,025,836 image bytes from source in the whole-module build",
+   "progress": 31.742677354208517,
+   "detail": "2,865,042 of 9,025,836 image bytes from source in the whole-module build",
    "reached": null,
    "regressed": false
   },

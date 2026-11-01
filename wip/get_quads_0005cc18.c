@@ -1,7 +1,4 @@
 /* HSTMATCH module=EBOOT.BIN start=0x0005cc18 end=0x0005ccac symbol=FUN_0005cc18 lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x0005cc18 end=0x0005ccac symbol=FUN_0005cc18 lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x0005cc18 end=0x0005ccac symbol=FUN_0005cc18 lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x0005cc18 end=0x0005ccac symbol=FUN_0005cc18 lang=c99 */
 void FUN_0005cc18(int param_1, int param_2, float *param_3, int *param_4)
 {
   int iVar1;

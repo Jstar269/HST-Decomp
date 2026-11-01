@@ -86,6 +86,40 @@ class PrCheckTests(unittest.TestCase):
         got = sorted(r.split()[0] + " " + r.split()[1] for r in self.refusals())
         self.assertEqual(got, ["gate src/eboot/asm.c:", "header src/eboot/no_header.c:", "header src/eboot/no_note.c:"])
 
+    def test_note_rules_agree_with_published_sources(self) -> None:
+        body = "int FUN_00010000(void) { return 0; }\n"
+        # a docs/DATA-TABLES.md pointer between the header and the note, as 44 published sources carry
+        self.write("src/eboot/annotated.c", HEADER + "/* Table reader; see docs/DATA-TABLES.md */\n" + NOTE + body)
+        # a near miss needs the header only, with trailing comments (CONTRIBUTING.md, "Near misses"), as harvests write
+        self.write("wip/near_00010000.c", HEADER + body + "// near miss from lane x (unreviewed)\n")
+        self.commit("ok")
+        self.assertEqual(self.refusals(), [])
+        self.write("wip/twice_00010000.c", HEADER + HEADER + body)
+        self.write("src/eboot/twice.c", HEADER + NOTE + HEADER + body)
+        self.write("src/eboot/late_note.c", HEADER + "/* a */\n/* b */\n/* c */\n" + NOTE + body)   # too far down
+        self.commit("bad")
+        got = sorted(r.split()[0] + " " + r.split()[1] for r in self.refusals())
+        self.assertEqual(got, ["header src/eboot/late_note.c:", "header src/eboot/twice.c:",
+                               "header wip/twice_00010000.c:"])
+
+    def test_the_compiler_log_is_judged_by_what_is_appended(self) -> None:
+        big = "".join(f"- 2026-10-{i % 28 + 1:02d} 0x{i:08x}: a lesson that is long enough to count {'x' * 60}\n"
+                      for i in range(12000))                            # over 1 MiB, like the real log
+        self.git("checkout", "-q", "base")                                # the big log is already on the base
+        self.write("docs/MWCC-NOTES.md", big)
+        self.commit("log")
+        self.git("checkout", "-q", "topic")
+        self.git("merge", "-q", "base")
+        self.write("docs/MWCC-NOTES.md", big + "- 2026-11-01 0x00010000: one new lesson\n")
+        self.commit("append")
+        self.assertEqual(self.refusals(), [])                             # a one-line append to a big log is fine
+        self.write("docs/MWCC-NOTES.md", big.replace("0x00000005", "0x00000006", 1) + "- one new lesson\n")
+        self.commit("edit")
+        self.assertEqual([r.split()[0] for r in self.refusals()], ["log"])
+        self.write("docs/README.md", big)
+        self.commit("big doc")
+        self.assertIn("size", [r.split()[0] for r in self.refusals()])   # other files keep the whole-file limit
+
 
 if __name__ == "__main__":
     unittest.main()

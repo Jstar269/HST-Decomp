@@ -1,5 +1,5 @@
-/* status: CURRENT - 95/95 words, 46 differ, +0x30; nine shapes measured, block-layout wall. */
 /* HSTMATCH module=EBOOT.BIN start=0x000dc6a4 end=0x000dc820 symbol=FUN_000dc6a4 lang=c++ */
+/* status: CURRENT - 95/95 words, 46 differ, +0x30; nine shapes measured, block-layout wall. */
 /* Fresh reconstruction from the disassembly; best variant 95/95 words, 46 differ, first diff +0x30. */
 typedef unsigned char undefined;
 typedef unsigned int undefined4;

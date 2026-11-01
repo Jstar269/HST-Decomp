@@ -1,5 +1,4 @@
 /* HSTMATCH module=EBOOT.BIN start=0x00045574 end=0x00045690 symbol=FUN_00045574 lang=c99 */
-/* HSTMATCH module=EBOOT.BIN start=0x00045574 end=0x00045690 symbol=FUN_00045574 lang=c99 */
 typedef struct Pair {
     unsigned short key;
     unsigned short value;

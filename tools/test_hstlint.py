@@ -68,6 +68,21 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(matches, ["FUN_00010000", "FUN_00010004", "DAT_00020000", "PTR_00020004"])
 
 
+class ProvenanceNoteTests(unittest.TestCase):
+    HEADER = "/* HSTMATCH module=EBOOT.BIN start=0x00010000 end=0x00010008 symbol=FUN_00010000 lang=c99 */\n"
+    HAND = "/* Hand-written reconstruction from the disassembly; exact match verified. */"
+
+    def test_the_note_follows_the_header_or_its_one_line_annotations(self) -> None:
+        self.assertEqual(L.provenance_note(self.HEADER + self.HAND + "\nint x;\n"), ("hand", self.HAND))
+        pointer = "/* CSV table reader: row count (this+8); see docs/DATA-TABLES.md */\n"
+        self.assertEqual(L.provenance_note(self.HEADER + pointer + self.HAND + "\n")[0], "hand")
+        self.assertEqual(L.provenance_note(self.HEADER + pointer * 3 + self.HAND + "\n"),
+                         (None, pointer.strip()))                   # at most two annotations come first
+        self.assertEqual(L.provenance_note(self.HEADER + "/* a\n   longer comment */\n" + self.HAND + "\n")[0], None)
+        self.assertEqual(L.provenance_note(self.HEADER + "int x;\n" + self.HAND + "\n"), (None, ""))   # code first
+        self.assertEqual(L.provenance_note(self.HEADER.strip()), (None, ""))
+
+
 class MainLintTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
