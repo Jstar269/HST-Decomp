@@ -126,6 +126,11 @@ def main() -> int:
                     help="the checkout to check (default: this one)")
     args = ap.parse_args()
     repo = args.repo.resolve()
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", f"{args.base}^{{commit}}")
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"no commit {args.base!r} to compare with: fetch it first (git fetch origin main), or pass "
+                         "--base with the branch your pull request goes into")
     files = changed_files(repo, args.base)
     refusals = check(repo, args.base)
     for r in refusals:
