@@ -26,7 +26,12 @@ class FileNameTests(unittest.TestCase):
         data[0x40:0x40 + 9] = b"sgxsys.c\0"
         data[0x50:0x50 + 8] = b"Thing.h\0"                 # headers are not units
         data[0x60:0x60 + 10] = b"%s/%s.cpp\0"              # a format string is not a file name
-        self.assertEqual(T.file_names(bytes(data), SEGMENTS), {0x1010: "chr_manager.cpp", 0x1030: "sgxsys.c"})
+        data[0x70:0x70 + 12] = b"\x01\x02sgxvo.c\0"         # a name right after other data, with no NUL before it
+        got = T.file_names(bytes(data), SEGMENTS)
+        self.assertEqual((got[0x1010], got[0x1030], got[0x1062]), ("chr_manager.cpp", "sgxsys.c", "sgxvo.c"))
+        self.assertNotIn(0x1040, got)                       # the header
+        self.assertNotIn(0x1050, got)                       # the format string's own address
+        self.assertEqual(got[0x1011], "hr_manager.cpp")     # a place inside a name: evidence only if code loads it
 
 
 class RecoverTests(unittest.TestCase):
@@ -63,6 +68,47 @@ class RecoverTests(unittest.TestCase):
         pairs = T.ordered_pairs(a, b)
         self.assertEqual(len(pairs), 3)                     # p, then q or r, then s; "dup" is not unique in a
         self.assertEqual([pairs[0], pairs[-1]], [(1, 10), (4, 40)])
+
+    def test_a_class_carries_its_unit_without_crossing_another(self) -> None:
+        names = {0x9000: "a.cpp", 0x9010: "b.cpp"}
+        sharing = module([(0x00, [0x9000]), (0x08, []), (0x10, [0x9010]), (0x18, []), (0x20, []), (0x28, [])], names)
+        # class V: 0x00 (in a.cpp) with 0x08 and 0x28; class W: 0x10 (b.cpp) and 0x18; class X: 0x00 and 0x10
+        sharing["classes"] = {0x100: {0x00, 0x08, 0x28}, 0x200: {0x10, 0x18}, 0x300: {0x00, 0x10, 0x20}}
+        got = T.recover({T.SHARING: sharing, T.EBOOT: module([], {})}, {})
+        self.assertEqual(got[T.SHARING], {0x00: ("a.cpp", "string"), 0x08: ("a.cpp", "class"),
+                                          0x10: ("b.cpp", "string"), 0x18: ("b.cpp", "class")})
+        # 0x28 would make a.cpp cross b.cpp; class X has functions in two units and decides nothing for 0x20
+
+    def test_class_and_link_order_repeat(self) -> None:
+        sharing = module([(0x00, [0x9000]), (0x08, []), (0x10, []), (0x18, [])], {0x9000: "a.cpp"})
+        sharing["classes"] = {0x100: {0x00, 0x18}, 0x200: {0x10}}
+        got = T.recover({T.SHARING: sharing, T.EBOOT: module([], {})}, {})
+        self.assertEqual(got[T.SHARING], {0x00: ("a.cpp", "string"), 0x08: ("a.cpp", "link-order"),
+                                          0x10: ("a.cpp", "link-order"), 0x18: ("a.cpp", "class")})
+
+    def test_classes_from_relocations(self) -> None:
+        import struct
+        # an image where address a sits at file offset a - 0x1000 + 0x40: code 0x1000..0x1020, .data 0x2000..0x2010
+        data = bytearray(0x1200)
+        seg = {"file_offset": 0x40, "start": 0x1000}
+        at = lambda a: a - 0x1000 + 0x40
+        names = b"\0.data\0.rel.data\0.rel.text\0.shstrtab\0"
+        struct.pack_into("<I", data, 0x20, 0x1100)          # e_shoff
+        struct.pack_into("<HHH", data, 0x2E, 40, 5, 4)      # e_shentsize, e_shnum, e_shstrndx
+        data[0x11D0:0x11D0 + len(names)] = names
+        for i, (n, addr, off, size) in enumerate([(0, 0, 0, 0), (1, 0x2000, at(0x2000), 0x10), (7, 0, 0x10A0, 0x18),
+                                                  (17, 0, 0x10C0, 0x10), (27, 0, 0x11D0, len(names))]):
+            struct.pack_into("<IIIIII", data, 0x1100 + 40 * i, n, 1, 0, addr, off, size)
+        # the vtable at 0x2008 after its header of two zero words; its slots point at 0x1010 and 0x1018
+        for a, v in ((0x2000, 0), (0x2004, 0), (0x2008, 0x1010), (0x200C, 0x1018)):
+            struct.pack_into("<I", data, at(a), v)
+        for k, o in enumerate((0x2008, 0x200C, 0x2010)):    # 0x2010 holds 0, no function: not a slot
+            struct.pack_into("<II", data, 0x10A0 + 8 * k, o, T.R_MIPS_32)
+        # the constructor at 0x1000 loads the header's address: lui a0, 0 / addiu a0, a0, 0x2000
+        struct.pack_into("<II", data, at(0x1000), 0x3C040000, 0x24842000)
+        struct.pack_into("<IIII", data, 0x10C0, 0x1000, T.R_MIPS_HI16, 0x1004, T.R_MIPS_LO16)
+        functions = [(0x1000, 0x1008, []), (0x1008, 0x1010, []), (0x1010, 0x1018, []), (0x1018, 0x1020, [])]
+        self.assertEqual(T.classes(bytes(data), seg, functions), {0x2008: {0x1000, 0x1010, 0x1018}})
 
     def test_pieces_count_a_split_by_another_unit(self) -> None:
         units = {1: ("a.cpp", "string"), 2: ("b.cpp", "string"), 3: ("a.cpp", "string"), 5: ("b.cpp", "string")}

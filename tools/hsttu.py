@@ -12,13 +12,23 @@ functions back into their files, with no guessing.
 
 EVIDENCE, in this order, and nothing else:
   string      the function loads the address of a file-name string (a `*.c`, `*.cpp` or `*.cc` name; headers are
-              left out, since an inline function from a header can sit in any file). Two different names in one
-              function would be a contradiction: such a function stays unassigned (none today).
+              left out, since an inline function from a header can sit in any file). The name need not follow a NUL:
+              the compiler can place it right after other data, so every address inside a NUL-terminated name where a
+              name could start counts, and only an address the code loads becomes evidence. Two different names in
+              one function would be a contradiction: such a function stays unassigned (none today).
   twin        EBOOT.BIN only: the function is the twin of a Sharing function that has a unit. Twins are the functions
               whose masked signatures (tools/hstclone.py) are unique in both modules, kept only when they are in the
               same order in both (the longest run in order), so a coincidence cannot pair code from two places.
   link-order  the function lies between two functions of the same unit, with no function of another unit between
               them: a linker places each object file's code in one piece.
+  class       the function belongs to a C++ class whose other known functions are all in one unit: MWCC emits a
+              class's vtable with its out-of-line methods. A class is a vtable (a run of relocated words in .data that
+              point at function starts, after MWCC's header of two zero words) with its functions: the virtuals no
+              other vtable holds, and the constructors and destructors, which load the vtable's address (a HI16/LO16
+              relocation pair to its header). A class whose known functions are in two units decides nothing. Guard:
+              a function joins a unit only when no function of another unit lies between it and that unit's nearest
+              function, so a class never makes a unit cross another (an inline virtual from a header can be emitted in
+              any file that uses it). Class and link-order evidence repeat until nothing changes.
 A function before a unit's first or after its last evidence stays unassigned, and so does every SDK library function
 (the origin classes the public tree leaves out), even inside a unit. A unit split by another unit's function would
 mean the evidence disagrees: the tool refuses to write that (none today).
@@ -33,6 +43,7 @@ import bisect
 import itertools
 import json
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -41,18 +52,101 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 TU_PATH = ROOT / "data" / "translation-units.json"
 SHARING, EBOOT = "hstp_trans_main.prx", "EBOOT.BIN"
-FILE_NAME = re.compile(rb"(?<=\x00)([A-Za-z0-9_][A-Za-z0-9_.+-]{0,120}\.(?:cpp|cc|c))\x00")
+FILE_NAME = re.compile(rb"([A-Za-z0-9_][A-Za-z0-9_.+-]{0,120}\.(?:cpp|cc|c))\x00")
+R_MIPS_32, R_MIPS_HI16, R_MIPS_LO16 = 2, 5, 6
 
 
 def file_names(data: bytes, segments: list[dict]) -> dict[int, str]:
-    """{address: name} of the NUL-terminated source-file names in a module image."""
+    """{address: name} of every place inside a NUL-terminated source-file name where a name can start (a letter or
+    `_`): a name can follow other data with no NUL between, and only an address the code loads is ever evidence."""
     out = {}
     for m in FILE_NAME.finditer(data):
-        off = m.start(1)
-        for s in segments:
-            if s["file_offset"] <= off < s["file_end"]:
-                out[s["start"] + off - s["file_offset"]] = m.group(1).decode("ascii")
+        for off in range(m.start(1), m.end(1) - 2):
+            if not (chr(data[off]).isalpha() or data[off] == 0x5F):
+                continue
+            for s in segments:
+                if s["file_offset"] <= off < s["file_end"]:
+                    out[s["start"] + off - s["file_offset"]] = data[off:m.end(1)].decode("ascii")
     return out
+
+
+def elf_sections(data: bytes) -> dict[str, tuple[int, int, int]]:
+    """{name: (address, file offset, size)} from an ELF image's section headers."""
+    shoff = struct.unpack_from("<I", data, 0x20)[0]
+    shentsize, shnum, shstrndx = struct.unpack_from("<HHH", data, 0x2E)
+    hdr = [struct.unpack_from("<IIIIII", data, shoff + i * shentsize) for i in range(shnum)]
+    names_at = hdr[shstrndx][4]
+    out = {}
+    for name_off, _type, _flags, addr, off, size in hdr:
+        end = data.index(b"\0", names_at + name_off)
+        out[data[names_at + name_off:end].decode("ascii", "replace")] = (addr, off, size)
+    return out
+
+
+def relocations(data: bytes, secs: dict, name: str) -> list[tuple[int, int]]:
+    """(address, type) of each relocation in section `name` (none when the image has no such section)."""
+    if name not in secs:
+        return []
+    _a, off, size = secs[name]
+    return [(o, info & 0xFF) for o, info in (struct.unpack_from("<II", data, off + k) for k in range(0, size, 8))]
+
+
+def classes(data: bytes, seg: dict, functions: list[tuple[int, int, list]]) -> dict[int, set[int]]:
+    """{vtable address: the class's functions} (see EVIDENCE, class) from a module image with relocations."""
+    secs = elf_sections(data)
+    if ".data" not in secs:
+        return {}
+    base = seg["file_offset"] - seg["start"]
+
+    def word(a: int) -> int:
+        return struct.unpack_from("<I", data, base + a)[0]
+
+    starts = [f[0] for f in functions]
+    ends = {f[0]: f[1] for f in functions}
+    lo, hi = secs[".data"][0], secs[".data"][0] + secs[".data"][2]
+    r32 = {o for o, t in relocations(data, secs, ".rel.data") if t == R_MIPS_32}
+    known = set(starts)
+    code_ptr = {o for o in r32 if lo <= o < hi and word(o) in known}
+    vtables: dict[int, list[int]] = {}
+    for o in sorted(code_ptr):
+        if o - 4 in code_ptr or o - 8 in r32 or word(o - 8) != 0 or word(o - 4) != 0:
+            continue
+        run = [o]
+        while run[-1] + 4 in code_ptr:
+            run.append(run[-1] + 4)
+        vtables[o] = [word(x) for x in run]
+    holders: dict[int, set[int]] = {}
+    for v, fs in vtables.items():
+        for f in fs:
+            holders.setdefault(f, set()).add(v)
+    members: dict[int, set[int]] = {}
+    for f, vs in holders.items():
+        if len(vs) == 1:
+            members.setdefault(next(iter(vs)), set()).add(f)
+    header = {v - 8: v for v in vtables}
+    his: dict[int, int] = {}
+    for o, t in relocations(data, secs, ".rel.text"):
+        x = word(o)
+        if t == R_MIPS_HI16:
+            his[(x >> 16) & 31] = (x & 0xFFFF) << 16
+        elif t == R_MIPS_LO16 and (x >> 21) & 31 in his:
+            imm = x & 0xFFFF
+            target = (his[(x >> 21) & 31] + (imm - 0x10000 if imm & 0x8000 else imm)) & 0xFFFFFFFF
+            i = bisect.bisect_right(starts, o) - 1
+            if target in header and i >= 0 and o < ends[starts[i]]:
+                members.setdefault(header[target], set()).add(starts[i])
+    return members
+
+
+def no_crossing(starts: list[int], units: dict[int, tuple[str, str]], f: int, unit: str) -> bool:
+    """True when no function of another unit lies between f and `unit`'s nearest function."""
+    mine = sorted(s for s, (u, _k) in units.items() if u == unit)
+    if not mine:
+        return False
+    i = bisect.bisect_left(mine, f)
+    g = min((mine[k] for k in (i - 1, i) if 0 <= k < len(mine)), key=lambda m: abs(m - f))
+    span = starts[bisect.bisect_left(starts, min(g, f)):bisect.bisect_right(starts, max(g, f))]
+    return all(units.get(s, (unit,))[0] == unit for s in span)
 
 
 def anchors(functions: list[tuple[int, int, list]], names: dict[int, str]) -> dict[int, str | None]:
@@ -117,7 +211,8 @@ def in_sdk(start: int, sdk: list[tuple[int, int]]) -> bool:
 
 def recover(modules: dict[str, dict], sdk: dict[str, list[tuple[int, int]]]) -> dict[str, dict[int, tuple[str, str]]]:
     """{module: {start: (unit, evidence)}} from `modules` {name: {"functions": [(start, end, refs)], "names": {...},
-    "signatures": {start: sig}}} (see load) and the SDK spans (tools/hstreport.py excluded_spans)."""
+    "signatures": {start: sig}, "classes": {vtable: {start}}}} (see load; "classes" may be left out) and the SDK spans
+    (tools/hstreport.py excluded_spans)."""
     out = {}
     for name in (SHARING, EBOOT):
         mod = modules[name]
@@ -128,8 +223,25 @@ def recover(modules: dict[str, dict], sdk: dict[str, list[tuple[int, int]]]) -> 
             for s, e in ordered_pairs(modules[SHARING]["signatures"], mod["signatures"]):
                 if s in out[SHARING] and e not in ev and not in_sdk(e, spans):
                     ev[e] = (out[SHARING][s][0], "twin")
-        out[name] = link_order([f[0] for f in mod["functions"]], ev, spans,
-                               frozenset(s for s, u in found.items() if u is None))
+        starts = [f[0] for f in mod["functions"]]
+        contradicted = frozenset(s for s, u in found.items() if u is None)
+        units = link_order(starts, ev, spans, contradicted)
+        while mod.get("classes"):
+            added = 0
+            for _v, fs in sorted(mod["classes"].items()):
+                known = {units[f][0] for f in fs if f in units}
+                if len(known) != 1:
+                    continue                    # no unit yet, or functions in two units: the class decides nothing
+                unit = known.pop()
+                for f in sorted(fs):
+                    if f not in units and f not in contradicted and not in_sdk(f, spans) \
+                            and no_crossing(starts, units, f, unit):
+                        ev[f] = units[f] = (unit, "class")
+                        added += 1
+            if not added:
+                break
+            units = link_order(starts, ev, spans, contradicted)
+        out[name] = units
     return out
 
 
@@ -162,7 +274,8 @@ def load(led: dict) -> dict[str, dict]:
             functions.append((f["start"], f["end"], refs))
             if f.get("boundary_status") == "reviewed":
                 signatures[f["start"]] = sig
-        out[name] = {"functions": functions, "names": file_names(data, mod["load_segments"]), "signatures": signatures}
+        out[name] = {"functions": functions, "names": file_names(data, mod["load_segments"]), "signatures": signatures,
+                     "classes": classes(data, seg, functions)}
     return out
 
 
