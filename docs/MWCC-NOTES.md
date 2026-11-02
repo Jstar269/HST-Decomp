@@ -2924,7 +2924,7 @@ forms. Declaring the containing object properly (`struct Big { char pad[0x8e0]; 
 of that type) is the cleaner fix for the *offsets*, since every member access then folds to `offset(s4)`.
 ## The parked word-count ties are not flag-reachable (measured 2026-10-28)
 Pile: the 9 of 69 NEARs whose recorded body length already equals retail's — the colour/layout
-class. Tool: `tools/flagmatrix.py` (a maintainer tool, not in the repository; runs the real matcher per variant; a hit would be byte-equality).
+class. Tool: `tools/flagmatrix.py` (runs the real matcher per variant; a hit would be byte-equality).
 Baseline differ counts in brackets:
 `0x000d99b8` (10), `0x001a5a1c` (12), `0x00199904` (14), `0x001aecf4` (15), `0x0015a728` (17),
 `0x001c38e0` (23), `0x00171588` (29), `0x00285d04` (30), `0x000e5580` (47).
@@ -3116,7 +3116,7 @@ differing words.
 - **Symbol names need EIGHT hex digits.** `FUN_000462a0`, not `FUN_00462a0`: the short form is reported as MISSING_SYMBOLS rather than relocating.
 - **Assignment to a fresh float local does not stop in-place folding**: 0x0016aafc's second angle still becomes `mul.s f21,f21,f0` where retail has `mul.s f2,f0,f21` and keeps f21 raw, leaving a 4-word gap.
 ### Flag matrix on the parked ties (2026-10-28, pass 42)
-`python tools/flagmatrix.py` (a maintainer tool, not in the repository, 13 flag sets, real matcher each time) over the four scheduler-class drafts:
+`python tools/flagmatrix.py` (13 flag sets, real matcher each time) over the four scheduler-class drafts:
 | address | profile | best of the other 12 | flips |
 | 0x000b8118 | 1 differ | 1 (O3p, O4pnoin, auto, inl2, bottomup, enumint) to 90 (O2p) | none |
 | 0x000bd568 | 15 | 15 (O4s/O3p/auto/inl2/bottomup/...) to 73 (O2p) | none |
@@ -3942,7 +3942,7 @@ produce it (MWCC sorts cases). The candidates are an ordered if/else-if ladder, 
 (MWCC merges the 31 arms) or a grouped `||` chain, which **folded the range into one compare (81/122)**. When a
 retail chain is non-monotonic, price the ladder before writing it: the merge cost is about one word per arm.
 ### Ledger universe
-`tools/ledger.py` (a maintainer tool, not in the repository) counts only addresses present in `try/agent-queue/*.json`. A conversion of a wip park outside
+`tools/ledger.py` counts only addresses present in `try/agent-queue/*.json`. A conversion of a wip park outside
 that list installs and verifies normally but does not move `mission=`; that is expected, not a broken ledger.
 ### Ladder-to-switch: group the identical arms (pass 137)
 Converting an `if (x == a) S; else if (x == b) S; else if (x == c) S;` ladder into a switch is only half the win if
@@ -4260,7 +4260,7 @@ offsets - and the frame becomes exact. This is under-declared stack, not a spill
   differing words). Per-block `Pair t;` vs one shared temp, and early-return vs nested if/else, compile to
   byte-identical objects (MWCC coalesces disjoint temp live ranges), so retail's four stack temp slots are not a
   scope artifact. `unsigned short` temps instead of the struct give 50-52 words (dead).
-- Tool: `tools/hsttry.py` (a maintainer tool, not in the repository) measures 6-12 variants of one base in a single hstmatch run (validated 2026-10-31 on two
+- Tool: `tools/hsttry.py` measures 6-12 variants of one base in a single hstmatch run (validated 2026-10-31 on two
   known-EXACT installs: EXACT, differ=0, same spans). Always read its md5 grouping before recording a dead lever:
   variants that compile to the same object prove nothing about the levers they differ in.
 - (lane dsn8, unreviewed by the main session)
@@ -4620,3 +4620,10 @@ TOP area is therefore not reachable from ordinary C in this lane -- park it inst
 - 2026-11-01 (0x002457a0 near miss, lane dsn7): copying four floats field-by-field from `DAT_003386b0->sub88->target_vel` reloads the global for EVERY field (lui/lw x4, +9 words, 226/217); caching `struct Sub88 *sub = DAT_003386b0->sub88;` once and copying target_vel as a unit restores 217/217. Residual 16 differ is an FP copy schedule rotation (retail loads src +4,+8,+12,+0 into f3,f2,f1,f0, ours +0,+4,+8,+12).
 - 2026-11-02 (permuter and flag sweep over the dsn8 residuals; parked): the ten smallest residuals (0x00296b3c 2 words, 0x00032834 5, 0x0005cc18 7, 0x000b342c 8, 0x00048d5c 10, 0x0001eae4 10, 0x0011574c 12, 0x00044eac 13, 0x0001ea64 17, 0x0001b6c4 20) were run through hstnearperm.py (about 24,000 compiles: statement swaps, operand commutes, bound/sign/cast/loop-form variants) and through hstflagsweep.py (all 11 decomp.me mwccpsp builds 121-219 x -O4,p/-O4,s/-O3/-O2 x -inline off/auto/deferred/all, plus -opt nointrinsics, -char unsigned, -enum min, -strict on, -str, -inline level=2/bottomup): no EXACT, and no build or option set reduced any of them below the profile baseline in a way that mattered (builds 151/210 differ by 1-2 positional words on two files, not exact). 0x00296b3c is retail's `addiu a2,a2,-1` BEFORE the byte store with `addiu a0,a0,1` in the branch delay slot; ours stores first. Do not spend more time on these by spelling or compiler settings.
 - 2026-11-02 (measurement flake, tools): a full measurement pass demoted a random wip row for three reasons, all fixed in tools/hstmatch.py: (1) two overlapping runs on one source shared build/<module>/<key>/ and the second run's start-up wipe deleted the first run's compile.log (now an OS file lock per key under build/.locks); (2) the WSL service stopped answering (Wsl/Service/0x8007274c) and the run crashed without a status line (now waits up to 3 times, aloud, then stops with exit 3 and TOOL_FAILED); (3) wibo aborted with `filesystem error: directory iterator cannot advance: Out of memory` under load (now status COMPILE_CRASHED, never a per-source result; hstperm recompiles such mutants once and prints the count).
+
+## Tools named in these notes that are not in the repository (2026-11-02)
+
+`tools/flagmatrix.py`, `tools/ledger.py` and `tools/hsttry.py`, cited in the entries of 2026-10-28 to 2026-10-31
+above, were the maintainer's scratch tools and were never committed; the measurements they made are recorded here,
+and `tools/hstmatch.py` re-checks any of them. `tools/hstflagsweep.py` and `tools/hstperm.py` now do the flag and
+variant sweeps.
