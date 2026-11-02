@@ -77,7 +77,7 @@ GCC_PROFILE_NAMES = (frozenset(f"gcc{v}{x}-{o}" for v in ("131", "171") for o in
                      | frozenset(f"gcc{v}-O0" for v in ("131", "171"))
                      # gcc402x-*: SECONDARY profile (owner decision 2026-10-27): open-source GCC 4.0.2 + the pspdev
                      # Allegrex patch (2007 revision, -mpreferred-stack-boundary) + lbp-decomp's measured Allegrex
-                     # tuning, built from GNU sources (provenance: C:/nk/private/compilers/lbp-gcc4/PROVENANCE.json,
+                     # tuning, built from GNU sources (provenance: the private compiler kit's PROVENANCE.json,
                      # "psp-gcc-4.0.2x"); it assembles with the Sony 1.3.1 kit's assembler through the kit's sony-as
                      # wrapper. Only for the functions a later Sony compiler built (duplicated epilogues, tail calls,
                      # no lhu narrowing); the gcc131/gcc171 profiles stay the defaults.

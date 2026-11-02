@@ -29,6 +29,15 @@ class PrimitiveTests(unittest.TestCase):
         with self.assertRaises(P.ProofError):
             P.unhx("0x123")
 
+    def test_link_targets_are_recorded_inside_their_configured_root(self) -> None:
+        roots = {"pspdev_bin": "/mnt/c/somewhere/pspdev/bin", "gcc4_home": "/home/u/lbp-gcc4", "HOME": "/home/u"}
+        self.assertEqual(P.link_target("/mnt/c/somewhere/pspdev/bin/psp-as", roots), "<pspdev_bin>/psp-as")
+        self.assertEqual(P.link_target("/home/u/lbp-gcc4/sony-as", roots), "<gcc4_home>/sony-as")   # the deepest root
+        self.assertEqual(P.link_target("/home/u/other/x", roots), "<HOME>/other/x")
+        self.assertEqual(P.link_target("/usr/bin/ar", roots), "/usr/bin/ar")
+        self.assertEqual(P.link_target("/mnt/c/somewhere/pspdev/binx", roots), "/mnt/c/somewhere/pspdev/binx")
+        self.assertEqual(P.link_target("../lib/x", {}), "../lib/x")
+
     def test_to_wsl(self) -> None:
         p = Path("C:/Users/test/file.c")
         with patch.object(Path, "resolve", return_value=p):

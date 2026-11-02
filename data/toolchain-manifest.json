@@ -1,11 +1,11 @@
 {
  "core": {
   "comparison_code": {
-   "tools/hstconfig.py": "4f097a51607b3d5e8ebabd5f45503db2a119e3563d4135e7e465b9389e39d495",
+   "tools/hstconfig.py": "626e2fe529c14ad9493b3f7a7c3e7935b0d72372bf5d314d0853ea1de9728823",
    "tools/hstgate.py": "1f1402334b3ac022a9e827bdc12e725c609fdbc42e0326fc3dec2549ac0ac66b",
-   "tools/hstmatch.py": "d496b962085d4b57acf878a8e136e56732aed0463d6d1154130a25ff8a0cdc48",
+   "tools/hstmatch.py": "5ae4c67e3c991c5f6d1573b9e11b1b5463201d3b63b30fdeea8a8e5620ff9a8f",
    "tools/hstpromote.py": "c38f92571f7e1ad994f946fa76640ad19e8fea410f5cf8c3b6e515abf6bbffef",
-   "tools/hstproof.py": "8ffa635480ee4215cb935a16586800b6f351e3bf5af1c11707cf192ffd1d2c87"
+   "tools/hstproof.py": "ce8c228bd3172edca870a3f417edaca7c886385574a43fb12058b0323be368d7"
   },
   "environment": {
    "LANG": "99fed2d548c2eb1022f4067f97fe838a2c3ea60ee0e0f53086788505c3ababad"
@@ -1116,17 +1116,17 @@
     },
     "links": {
      "psp-gcc-4.0.2x/bin/psp-ar": "/usr/bin/ar",
-     "psp-gcc-4.0.2x/bin/psp-as": "/mnt/c/nk/private/campaign-builds/hst-decomp-campaign-365-20261013/toolchain/pspdev/runtime/pspdev/bin/psp-as",
-     "psp-gcc-4.0.2x/bin/psp-ld": "/mnt/c/nk/private/campaign-builds/hst-decomp-campaign-365-20261013/toolchain/pspdev/runtime/pspdev/bin/psp-ld",
+     "psp-gcc-4.0.2x/bin/psp-as": "<pspdev_bin>/psp-as",
+     "psp-gcc-4.0.2x/bin/psp-ld": "<pspdev_bin>/psp-ld",
      "psp-gcc-4.0.2x/bin/psp-nm": "/usr/bin/nm",
-     "psp-gcc-4.0.2x/bin/psp-objcopy": "/mnt/c/nk/private/campaign-builds/hst-decomp-campaign-365-20261013/toolchain/pspdev/runtime/pspdev/bin/psp-objcopy",
-     "psp-gcc-4.0.2x/bin/psp-objdump": "/mnt/c/nk/private/campaign-builds/hst-decomp-campaign-365-20261013/toolchain/pspdev/runtime/pspdev/bin/psp-objdump",
+     "psp-gcc-4.0.2x/bin/psp-objcopy": "<pspdev_bin>/psp-objcopy",
+     "psp-gcc-4.0.2x/bin/psp-objdump": "<pspdev_bin>/psp-objdump",
      "psp-gcc-4.0.2x/bin/psp-ranlib": "/usr/bin/ranlib",
      "psp-gcc-4.0.2x/bin/psp-strip": "/usr/bin/strip"
     },
     "missing": [],
     "present": true,
-    "sha256": "e261d1d8250eb2f243a9ddf019d679cfd2d04670fab0a5cd7e39c9537e290813"
+    "sha256": "f9e6891a244014fe6a7f52d10dc09bd3cf29e1d906fef4a0cd6a5a3cc2177423"
    },
    "pspgcc-specs": {
     "files": {},
@@ -1137,7 +1137,7 @@
    }
   }
  },
- "core_digest": "d0a2cb90fe0911a2fd7bc6a634d7e7eda777fd628672e49fca2bf844cb2e3197",
+ "core_digest": "4180e1d31901ea5a0433378058db77347713d9efd8ca35de545de65da58a4b17",
  "history": [
   {
    "digest": "9493e6106636aff84e57adce4cf0c985983ac492b1ed6d40292a0f87ce79ae7e",
@@ -1230,7 +1230,7 @@
    "event": "migrate-toolchain",
    "from": "110048922eec8045d31ad01dae14338bde7306315f3422e07c460f2564cf4ca2",
    "journal_seq": 195,
-   "reason": "Secondary compiler profile gcc402x-O0/O1/O2/O3/Os (owner decision 2026-10-27): open-source GCC 4.0.2 + pspdev Allegrex patch + lbp-decomp's Allegrex tuning, the kit shared with lbp-decomp (gcc4_home = $HOME/lbp-gcc4, psp-gcc-4.0.2x + sony-as; provenance C:/nk/private/compilers/lbp-gcc4/PROVENANCE.json); defaults unchanged",
+   "reason": "Secondary compiler profile gcc402x-O0/O1/O2/O3/Os (owner decision 2026-10-27): open-source GCC 4.0.2 + pspdev Allegrex patch + lbp-decomp's Allegrex tuning, the kit shared with lbp-decomp (gcc4_home = $HOME/lbp-gcc4, psp-gcc-4.0.2x + sony-as; provenance the private compiler kit's PROVENANCE.json); defaults unchanged",
    "reverified": 14234,
    "run": "20261027T151031Z-dfbbdc",
    "scope": "full",
@@ -1612,6 +1612,23 @@
    "scope": "full",
    "to": "d0a2cb90fe0911a2fd7bc6a634d7e7eda777fd628672e49fca2bf844cb2e3197",
    "utc": "2026-11-02T08:02:23Z"
+  },
+  {
+   "changes": [
+    "tools/hstconfig.py changed",
+    "tools/hstmatch.py changed",
+    "tools/hstproof.py changed",
+    "psp-gcc-4.0.2x: links/layout"
+   ],
+   "event": "migrate-toolchain",
+   "from": "d0a2cb90fe0911a2fd7bc6a634d7e7eda777fd628672e49fca2bf844cb2e3197",
+   "journal_seq": 241,
+   "reason": "remove private paths from comparison code",
+   "reverified": 14841,
+   "run": "20261102T081016Z-517b87",
+   "scope": "full",
+   "to": "4180e1d31901ea5a0433378058db77347713d9efd8ca35de545de65da58a4b17",
+   "utc": "2026-11-02T09:34:20Z"
   }
  ],
  "schema": "hst-decomp.toolchain-manifest.v1",

@@ -569,6 +569,20 @@ hashset() {
 """
 
 
+def link_target(target: str, roots: dict[str, str]) -> str:
+    """A symbolic link's target as the lock records it: inside a configured root (the deepest one that holds it) it is
+    `<name>/rest`, so the lock names no local directory layout; any other target is kept as it is (`/usr/bin/ar`).
+    A link that points somewhere else, or a root whose contents change, still changes the digest."""
+    best = ""
+    for name, base in roots.items():
+        base = base.rstrip("/")
+        if base and (target == base or target.startswith(base + "/")) and len(base) > len(roots.get(best, "").rstrip("/")):
+            best = name
+    if not best:
+        return target
+    return f"<{best}>" + target[len(roots[best].rstrip("/")):]
+
+
 def live_toolchain(root: Path = ROOT, workdir: Path | None = None) -> dict:
     """The toolchain core as it is now, hashed at the configured locations (hst-config.json / HST_* variables)."""
     native, home, pspdev = M.native_dir(), M.gcc_home(), M.pspdev_bin()
@@ -584,6 +598,10 @@ def live_toolchain(root: Path = ROOT, workdir: Path | None = None) -> dict:
         f'hashset binutils "{pspdev}" psp-ld psp-objcopy psp-objdump',
         f'hashset binutils-ldscripts "{pspdev}/.." psp/lib/ldscripts',
         f'hashset pspgcc-specs "{PSPGCC_SPECS_DIR}" .',
+        # the configured roots as the shell expands them, for link_target
+        f'printf "R pspdev_bin %s\\n" "{pspdev}"', f'printf "R gcc4_home %s\\n" "{gcc4}"',
+        f'printf "R gcc_home %s\\n" "{home}"', f'printf "R mwcc_native %s\\n" "{native}"',
+        'printf "R HOME %s\\n" "$HOME"',
         'echo "E-BEGIN"', "env | sort", 'echo "E-END"'])
     out = run_wsl_script(script, workdir or root / "build" / "proof", "toolchain-hash")
     groups: dict[str, dict] = {g: {"present": True, "files": {}, "links": {}, "missing": []}
@@ -591,6 +609,8 @@ def live_toolchain(root: Path = ROOT, workdir: Path | None = None) -> dict:
                                          "binutils-ldscripts",
                                          "pspgcc-specs")}
     env_lines: list[str] = []
+    roots: dict[str, str] = {}
+    links: list[tuple[str, str, str]] = []
     in_env = False
     for line in out.splitlines():
         if line == "E-BEGIN":
@@ -604,6 +624,9 @@ def live_toolchain(root: Path = ROOT, workdir: Path | None = None) -> dict:
             continue
         kind, _, rest = line.partition(" ")
         g, _, rest = rest.partition(" ")
+        if kind == "R":
+            roots[g] = rest
+            continue
         if g not in groups:
             continue
         if kind == "X":
@@ -615,7 +638,9 @@ def live_toolchain(root: Path = ROOT, workdir: Path | None = None) -> dict:
             groups[g]["files"][p.removeprefix("./")] = h.lstrip("\\")
         elif kind == "L":
             p, _, target = rest.partition(" ")
-            groups[g]["links"][p.removeprefix("./")] = target
+            links.append((g, p.removeprefix("./"), target))
+    for g, p, target in links:
+        groups[g]["links"][p] = link_target(target, roots)
     env = {}
     for line in env_lines:
         if COMPILER_ENV.match(line):
