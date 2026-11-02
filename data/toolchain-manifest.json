@@ -3,7 +3,7 @@
   "comparison_code": {
    "tools/hstconfig.py": "4f097a51607b3d5e8ebabd5f45503db2a119e3563d4135e7e465b9389e39d495",
    "tools/hstgate.py": "1f1402334b3ac022a9e827bdc12e725c609fdbc42e0326fc3dec2549ac0ac66b",
-   "tools/hstmatch.py": "3c99980959685818a05994daa7db89b39e4ca2427c2c63ac326e6eca54b44c90",
+   "tools/hstmatch.py": "d496b962085d4b57acf878a8e136e56732aed0463d6d1154130a25ff8a0cdc48",
    "tools/hstpromote.py": "c38f92571f7e1ad994f946fa76640ad19e8fea410f5cf8c3b6e515abf6bbffef",
    "tools/hstproof.py": "8ffa635480ee4215cb935a16586800b6f351e3bf5af1c11707cf192ffd1d2c87"
   },
@@ -1137,7 +1137,7 @@
    }
   }
  },
- "core_digest": "8cc965bb1c231fca7bb719d092d6b988b83fb43f5cf687a170a0f63e4542c0c4",
+ "core_digest": "d0a2cb90fe0911a2fd7bc6a634d7e7eda777fd628672e49fca2bf844cb2e3197",
  "history": [
   {
    "digest": "9493e6106636aff84e57adce4cf0c985983ac492b1ed6d40292a0f87ce79ae7e",
@@ -1598,6 +1598,20 @@
    "scope": "full",
    "to": "8cc965bb1c231fca7bb719d092d6b988b83fb43f5cf687a170a0f63e4542c0c4",
    "utc": "2026-10-29T17:42:20Z"
+  },
+  {
+   "changes": [
+    "tools/hstmatch.py changed"
+   ],
+   "event": "migrate-toolchain",
+   "from": "8cc965bb1c231fca7bb719d092d6b988b83fb43f5cf687a170a0f63e4542c0c4",
+   "journal_seq": 240,
+   "reason": "hstmatch.py: per-key build locks, WSL failure and compiler crash statuses; the comparison is unchanged",
+   "reverified": 14841,
+   "run": "20261102T063606Z-24316c",
+   "scope": "full",
+   "to": "d0a2cb90fe0911a2fd7bc6a634d7e7eda777fd628672e49fca2bf844cb2e3197",
+   "utc": "2026-11-02T08:02:23Z"
   }
  ],
  "schema": "hst-decomp.toolchain-manifest.v1",

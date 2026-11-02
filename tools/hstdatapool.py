@@ -60,7 +60,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # merged, in this order, the read-only data, the embedded files, and the initialised data (where mwccpsp puts string
 # literals), then the static initialisers, their table and the vtables. Measured 2026-10-26 from the retail images:
 # in each region the referencing functions rise with the address (link order), and the region edges are where that
-# order restarts (C:/nk/reports/hst-path-to-100-20261026/findings.json, area "data", region C).
+# order restarts (the maintainer's report hst-path-to-100-20261026/findings.json, area "data", region C).
 REGIONS = {"EBOOT.BIN": (0x2CECA8, 0x303194), "hstp_trans_main.prx": (0x374138, 0x3AC430)}
 SRC_DIR = {"EBOOT.BIN": "src/eboot", "hstp_trans_main.prx": "src/sharing_main"}
 

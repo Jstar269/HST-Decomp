@@ -13,7 +13,9 @@ adds or changes:
                   for the append-only compiler log (docs/MWCC-NOTES.md) the limit applies to what is appended, and the
                   generated objdiff report (docs/objdiff-report.json, one unit per function) has a 32 MiB limit
   report          that report when its units do not add up to its module figures (tools/hstreport.py unit_problems)
-  log             a changed or deleted line in that log (append only)
+  log             a changed or deleted line in that log (append only). One exception, for redaction: a line may
+                  change when the new line is the old one with local path roots (`C:\\...`, `/mnt/c/...`,
+                  `/home/...`) replaced by the placeholder `<private tree>` and nothing else changed (REDACTION)
   private         an added line with a personal or secret value: a home directory path (C:\\Users\\..., /home/...,
                   /mnt/c/Users/...), a private key block, a GitHub, OpenAI or AWS token
   dump            an added file with more than 16 lines that look like a disassembly listing (an address, an
@@ -50,6 +52,11 @@ MAX_BYTES = 1 << 20
 # whole log, which grows with every lesson and is read with tail and grep from fixed line numbers, so it stays one
 # file. Changing or deleting an existing line is refused, as for symbols/.
 APPEND_ONLY_LOGS = ("docs/MWCC-NOTES.md",)
+# The one change an append-only line may take: a local path root (a drive letter, /mnt/<drive>/ or /home/ and the path
+# characters after it) replaced by this placeholder, every other byte of the line kept (is_redaction).
+REDACTION = "<private tree>"
+LOCAL_ROOT = r"(?:[A-Za-z]:[\\/]|/mnt/[a-z]/|/home/)[^\s`'\"<>|()\[\]]*?"
+LOCAL_PATH = re.compile(r"[A-Za-z]:[\\/]+\w|/mnt/[a-z]/\w|/home/\w")
 # The objdiff progress report (tools/hstreport.py) lists every reviewed function of the two game modules, one unit per
 # line, so it is several MiB. It has its own limit, and it must still add up: its units, to the module figures.
 OBJDIFF_REPORT = "docs/objdiff-report.json"
@@ -93,6 +100,28 @@ def removed_lines(repo: Path, base: str, path: str) -> list[str]:
     return [l[1:] for l in out.splitlines() if l.startswith("-") and not l.startswith("---")]
 
 
+def is_redaction(old: str, new: str) -> bool:
+    """True when new is old with one or more local path roots replaced by REDACTION and no other byte changed, and
+    new names no local path any more."""
+    if REDACTION not in new or LOCAL_PATH.search(new):
+        return False
+    pattern = LOCAL_ROOT.join(re.escape(part) for part in new.split(REDACTION))
+    return re.fullmatch(pattern, old) is not None
+
+
+def unredacted(removed: list[str], added: list[str]) -> list[str]:
+    """The removed lines that no added line redacts (each added line redacts at most one removed line)."""
+    free = list(added)
+    left = []
+    for old in removed:
+        hit = next((i for i, new in enumerate(free) if is_redaction(old, new)), None)
+        if hit is None:
+            left.append(old)
+        else:
+            free.pop(hit)
+    return left
+
+
 def report_problems(data: bytes) -> list[str]:
     """Why an objdiff report is not one tools/hstreport.py wrote ([] when its units add up to its modules)."""
     import json
@@ -117,7 +146,7 @@ def check(repo: Path, base: str) -> list[str]:
             continue
         data = file.read_bytes() if file.is_file() else b""
         if path in APPEND_ONLY_LOGS and status == "M":
-            if removed_lines(repo, base, path):
+            if unredacted(removed_lines(repo, base, path), added_lines(repo, base, path)):
                 refusals.append(f"log      {path}: existing lines changed or deleted (append only)")
             grown = sum(len(line.encode("utf-8")) + 1 for line in added_lines(repo, base, path))
             if grown > MAX_BYTES:

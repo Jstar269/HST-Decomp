@@ -3180,7 +3180,7 @@ data, seg = H.module_bytes({}, "EBOOT.BIN")     # data: the loaded image, seg: t
 off = seg["file_offset"] + (0x002c0168 - seg["start"])
 entry = struct.unpack_from("<I", data, off)[0]
 ```
-The image is `C:\nk\private\hst-1009\hst-build\inputs\selected.elf` (path comes from
+The image is `<private tree>\hst-1009\hst-build\inputs\selected.elf` (path comes from
 `revision-selection.json` + `ledger/campaign.json`, not from `hst-config.json`), and the address→offset
 rule is `file_offset + (va - seg["start"])` with `start=0`, `file_offset=84` in this build.
 Worked example (`0x000c13e0`, jump table at `0x002c0168`, 14 entries): only entries **4** and **9**
@@ -4106,7 +4106,7 @@ was invalid. Measurements that used lane copies: the fifteen-unit +0x0 screen an
 the 002ad758 pointer-chain batches (`002ad758_v0c`), the 00185970 frame batches (`00185970_v0c`), and
 the 000d3298 self-op repair (`p_d3298_1_cmp.c`, derived from `000d3298_v0c`). All of those are
 re-measured from their genuine `gen-aN` counterparts in pass 173. The copies are quarantined in
-`try/pend/gen-stale/` so no later pass measures them again; measure only from `C:/nk/private/hst-decomp/try/gen-aN/`.
+`try/pend/gen-stale/` so no later pass measures them again; measure only from `<private tree>/hst-decomp/try/gen-aN/`.
 First genuine result: `gen-a2/v0r` for 0026bf18 **passes** the prologue gate (`addiu sp,sp,-32` at its
 own `start=`), so the address is not mis-attributed. Its frame is 16 bytes larger than retail's because
 the candidate declares eight parameters where retail takes two.
@@ -4505,7 +4505,7 @@ base at 24/24. Combined with the earlier negative results, four items (0x0001eae
 shape, expression shape, nor any compiler profile available (O3/O4, speed/space, intrinsics on/off) can move.
 Ruling: PROGRESS.md V07/V08 (no-retry). The counts above are the data behind it.
 ## 2026-11-01 per-build sweep (all Metrowerks builds on the machine)
-Source tree `C:/nk/private/compilers/decompme-mwccpsp/builds` holds 11 builds; the lane had restored only 219.
+Source tree `<private tree>/compilers/decompme-mwccpsp/builds` holds 11 builds; the lane had restored only 219.
 Each was copied into its own native root (`build/probe-<N>/wibo` + `builds/219/`), leaving the lane default
 untouched. Control = installed EXACT `init_flags_0001f06c`; walls = the four items under study.
 | build | version | control | 0x0001eae4 | 0x0001ea64 | 0x00044eac | 0x000b342c | note |
