@@ -139,7 +139,7 @@ class PrCheckTests(unittest.TestCase):
     def test_a_redaction_replaces_only_local_path_roots(self) -> None:
         R = P.is_redaction
         self.assertTrue(R(r"image `C:\nk\private\a\b.elf` here", r"image `<private tree>\a\b.elf` here"))
-        self.assertTrue(R("from `/mnt/c/nk/x/try/` and `/home/u/y`", "from `<private tree>/try/` and `<private tree>/y`"))
+        self.assertTrue(R("from `/mnt/c/nk/x/try/` and `/home/user/y`", "from `<private tree>/try/` and `<private tree>/y`"))
         self.assertFalse(R("from `C:/nk/x/try/`", "from `<private tree>/try/` (edited)"))
         self.assertFalse(R("value 0x10 here", "value <private tree> here"))              # nothing local was there
         self.assertFalse(R("a `C:/nk/x` and `C:/nk/y`", "a `<private tree>` and `C:/nk/y`"))  # a path is left
