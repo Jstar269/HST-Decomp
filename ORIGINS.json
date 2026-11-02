@@ -5144,6 +5144,7 @@
 "src/eboot/release_resources_0008aee4.c": "game",
 "src/eboot/release_resources_0018059c.cpp": "game",
 "src/eboot/release_scene_resources_000935b0.c": "game",
+"src/eboot/release_slot_00057648.cpp": "game",
 "src/eboot/release_slot_000bd6a4.c": "game",
 "src/eboot/release_slot_by_index_001b04d0.c": "game",
 "src/eboot/release_slot_handle_001b2040.c": "game",

@@ -4627,3 +4627,15 @@ TOP area is therefore not reachable from ordinary C in this lane -- park it inst
 above, were the maintainer's scratch tools and were never committed; the measurements they made are recorded here,
 and `tools/hstmatch.py` re-checks any of them. `tools/hstflagsweep.py` and `tools/hstperm.py` now do the flag and
 variant sweeps.
+
+## 2026-11-02 permuter (tag c2, dsn7): a cast on the array index, and a dead store only a self-cancelling expression reproduces
+
+- `release_slot_00057648` (EXACT): the seed already had retail's shape and differed only in the tail. Retail computes
+  `idx*4` again after the call to FUN_000561d4; the seed kept it in a saved register across the call. Writing the load as
+  `self->items[(int)idx]` (unsigned idx cast to int, the store left as `self->items[idx]`) is the whole fix; casting
+  both subscripts, or only the store, does not match. The permuter's variant also carried a second, redundant
+  `(int)` that was dropped.
+- `vec3_reserve_copy_00115f68` is NOT installed. The permuter reaches EXACT only through a self-cancelling store to the
+  swapped size, `tmp.size = c - (int)c;` (also `c - (unsigned)(int)c`, `(int)c - c`). Plain `c - c`, `0`, `c`,
+  `c * 0` and `(unsigned)(c - c)` all stay MISMATCH, so no readable spelling is known; the extra expression reads worse
+  than the near miss it replaces. Parked, with the finding recorded here.

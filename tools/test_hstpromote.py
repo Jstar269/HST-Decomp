@@ -603,7 +603,7 @@ class ToolchainMutations(GateCase):
         # (a) the promoter never reads them: every run has a fresh directory
         self.assertRefused(self.sb.promote(TWIN), r"LOST EBOOT\.BIN \[0x0012aa1c", "mismatch")
         # (b) a matcher changed to reuse an existing object is a toolchain change
-        self.sb.edit("tools/hstmatch.py", "        for f in out.glob(\"*\"):\n            f.unlink()\n", "")
+        self.sb.edit("tools/hstmatch.py", "f.unlink()", "pass  # reuse what is there")
         self.assertRefused(self.sb.promote(TWIN), "toolchain-drift")
 
     def test_stale_artifact_is_refused_below_the_cli(self) -> None:
