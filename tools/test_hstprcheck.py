@@ -123,28 +123,28 @@ class PrCheckTests(unittest.TestCase):
 
     def test_a_local_path_in_the_compiler_log_may_be_redacted(self) -> None:
         log = ("- 2026-10-01 0x00010000: a lesson\n"
-               "- 2026-10-02: measure only from `C:/nk/private/hst-decomp/try/gen-aN/` from now on\n")
+               "- 2026-10-02: measure only from `C:/work/tree/project/try/gen-aN/` from now on\n")
         self.git("checkout", "-q", "base")
         self.write("docs/MWCC-NOTES.md", log)
         self.commit("log with a local path")
         self.git("checkout", "-q", "topic")
         self.git("merge", "-q", "base")
-        self.write("docs/MWCC-NOTES.md", log.replace("C:/nk/private", "<private tree>") + "- 2026-11-02: appended\n")
+        self.write("docs/MWCC-NOTES.md", log.replace("C:/work/tree", "<private tree>") + "- 2026-11-02: appended\n")
         self.commit("redact and append")
         self.assertEqual(self.refusals(), [])                           # a redaction is the one allowed change
-        self.write("docs/MWCC-NOTES.md", log.replace("C:/nk/private/hst-decomp/try", "<private tree>/x"))
+        self.write("docs/MWCC-NOTES.md", log.replace("C:/work/tree/project/try", "<private tree>/x"))
         self.commit("redact and rewrite")
         self.assertEqual([r.split()[0] for r in self.refusals()], ["log"])  # the rest of the line must stay
 
     def test_a_redaction_replaces_only_local_path_roots(self) -> None:
         R = P.is_redaction
-        self.assertTrue(R(r"image `C:\nk\private\a\b.elf` here", r"image `<private tree>\a\b.elf` here"))
-        self.assertTrue(R("from `/mnt/c/nk/x/try/` and `/home/user/y`", "from `<private tree>/try/` and `<private tree>/y`"))
-        self.assertFalse(R("from `C:/nk/x/try/`", "from `<private tree>/try/` (edited)"))
+        self.assertTrue(R(r"image `C:\work\tree\a\b.elf` here", r"image `<private tree>\a\b.elf` here"))
+        self.assertTrue(R("from `/mnt/c/work/x/try/` and `/home/user/y`", "from `<private tree>/try/` and `<private tree>/y`"))
+        self.assertFalse(R("from `C:/work/x/try/`", "from `<private tree>/try/` (edited)"))
         self.assertFalse(R("value 0x10 here", "value <private tree> here"))              # nothing local was there
-        self.assertFalse(R("a `C:/nk/x` and `C:/nk/y`", "a `<private tree>` and `C:/nk/y`"))  # a path is left
+        self.assertFalse(R("a `C:/work/x` and `C:/work/y`", "a `<private tree>` and `C:/work/y`"))  # a path is left
         self.assertFalse(R("a lesson", "a different lesson"))
-        self.assertEqual(P.unredacted(["a C:/nk/x b", "c"], ["a <private tree> b"]), ["c"])
+        self.assertEqual(P.unredacted(["a C:/work/x b", "c"], ["a <private tree> b"]), ["c"])
 
 if __name__ == "__main__":
     unittest.main()
