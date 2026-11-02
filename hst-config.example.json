@@ -12,7 +12,7 @@
 
   "_gcc_home": "wsl. Directory inside WSL with the decomp.me Sony psp-gcc kits: psp-gcc-1.3.1/ and psp-gcc-1.7.1/ (needed by sources whose header says cc=gcc131-* or cc=gcc171-*; the kits are 32-bit Linux programs and need libc6-i386).",
   "gcc_home": "$HOME/hst-gcc",
-  "_gcc4_home": "wsl. Directory inside WSL with the open-source GCC 4.x PSP cross compilers shared with lbp-decomp: psp-gcc-4.0.2x/ and the sony-as wrapper (needed only by sources whose header says cc=gcc402x-*; build script and provenance in the maintainers' compilers/lbp-gcc4/PROVENANCE.json).",
+  "_gcc4_home": "wsl. Directory inside WSL with the open-source GCC 4.x PSP cross compilers shared with lbp-psp-decomp: psp-gcc-4.0.2x/ and the sony-as wrapper (needed only by sources whose header says cc=gcc402x-*; build script and provenance in the maintainers' compilers/lbp-gcc4/PROVENANCE.json).",
   "gcc4_home": "$HOME/lbp-gcc4",
 
   "_newlib_home": "wsl. Directory inside WSL with the newlib source trees <version>/newlib-<version>/newlib and the generated include directories inc-<version>. Only hstnewlib.py (library reconstruction) needs it.",

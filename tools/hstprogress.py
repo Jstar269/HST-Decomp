@@ -360,7 +360,7 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
         "([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The "
         "project's own finish line is stricter: the whole build must also work when moved to another address, and "
         f"every source must be reviewed by a person. That figure is {ladder['strict_percent']:.1f}%. Measured {date} "
-        "with `python tools/hstprogress.py`"
+        "from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger"
         + (f"; built from source by the whole-module build of {built}." if built and built != date else ".")])
     k, c = kinds["kinds"], kinds["classes"]
     unknown = f", and {k['unknown']:,} have no known note kind" if k.get("unknown") else ""

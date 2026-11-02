@@ -30,7 +30,9 @@ EVIDENCE, in this order, and nothing else:
               function, so a class never makes a unit cross another (an inline virtual from a header can be emitted in
               any file that uses it). Class and link-order evidence repeat until nothing changes.
 A function before a unit's first or after its last evidence stays unassigned, and so does every SDK library function
-(the origin classes the public tree leaves out), even inside a unit. A unit split by another unit's function would
+(the origin classes the public tree leaves out), even inside a unit. The SGX sound library is the exception: it is Sony
+middleware, but its own assertions name its units (sgx*.c), so its functions (origin class sony-middleware-sgx) are
+members like any other; the progress report still counts them in the SDK unit (tools/hstreport.py). A unit split by another unit's function would
 mean the evidence disagrees: the tool refuses to write that (none today).
 
 The file lists unit names (file names as the program spells them, without directory) and function start addresses:
@@ -321,7 +323,7 @@ def main() -> int:
     led = P.ledger()
     classes, _warnings = hstorigin.classify(P.ROOT)
     mods = load(led)
-    units = recover(mods, hstreport.excluded_spans(classes, P.ROOT))
+    units = recover(mods, hstreport.excluded_spans({p: c for p, c in classes.items() if c != hstorigin.SGX}, P.ROOT))
     split = {m: [u for u, n in pieces([f[0] for f in mods[m]["functions"]], units[m]).items() if n > 1] for m in units}
     text = render(document(units))
     for m in (SHARING, EBOOT):

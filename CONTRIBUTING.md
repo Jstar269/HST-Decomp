@@ -47,7 +47,7 @@ python tools/hstmatch.py src/eboot/FUN_00000000.c
 
 `hstconfig.py check` lists every key; keys that only maintainer tools use (`newlib_home`, `ghidra_headless`,
 `ext_root` and the like) show `UNSET`, and that is fine for matching. Before your first change, run
-`python tools/hstmatch.py --all --parallel 8` once: every published source should report `EXACT`, which proves your
+`python tools/hstmatch.py --all --parallel 4` once: every published source should report `EXACT`, which proves your
 setup (about an hour on a fast machine).
 
 ## Never allowed

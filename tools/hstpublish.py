@@ -39,11 +39,13 @@ ROOT = hstorigin.ROOT
 # PUBLISH POLICY - the single setting that decides which origin classes stay private.
 #
 # Sony SDK excluded at publish time for now: `sony-prx` is code of Sony system-library modules (libfont,
-# scePsmfP, scePsmf) and `gcc-unattributed` is psp-gcc-built SDK code of EBOOT.BIN and the Sharing module that is
-# not newlib and has not been attributed to anything else yet. A public build gets these functions from the
-# user's own copy of the game. To release a class, remove it from this tuple (and re-run hstorigin.py).
-# Classes: game, newlib, mw-runtime, sony-prx, gcc-unattributed.
-EXCLUDED_CLASSES = ("sony-prx", "gcc-unattributed")
+# scePsmfP, scePsmf), `sony-middleware-sgx` is the SGX sound library, Sony middleware treated like the SDK (owner
+# decision 2026-11-01: never published as source, counted as the SDK is), and `gcc-unattributed` is psp-gcc-built
+# SDK code of EBOOT.BIN and the Sharing module that is not newlib and has not been attributed to anything else yet.
+# A public build gets these functions from the user's own copy of the game. To release a class, remove it from this
+# tuple (and re-run hstorigin.py).
+# Classes: game, newlib, mw-runtime, sony-prx, sony-middleware-sgx, gcc-unattributed.
+EXCLUDED_CLASSES = ("sony-prx", "sony-middleware-sgx", "gcc-unattributed")
 # Maintainer-only files that stay in the maintainers' tree: working research notes, and the scripts that run
 # external agent lanes (they depend on the maintainers' own tool setup). A trailing "/" excludes a whole directory.
 PRIVATE_PATHS = ("docs/research/", "docs/LANE-TASK.md", "docs/AGENT-BRIEF.md", "tools/hstauto.sh", "tools/hstsupervise.sh",

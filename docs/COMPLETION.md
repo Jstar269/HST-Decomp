@@ -30,7 +30,7 @@ the definition from the start, and the scope never shrinks.
    hand-written assembly only where the original was assembly. Never: retail bytes included as binary, machine code
    pasted into a source (`asm` statements that emit instructions, `.word`/`.byte` emission), object or byte patching,
    post-link fix-ups, changes to the verifier, skipped comparisons, or experimental flags (`extra=`).
-   One exception (owner decision 2026-10-27, the rule lbp-decomp also adopted): inline VFPU assembly where the
+   One exception (owner decision 2026-10-27, the rule lbp-psp-decomp also adopted): inline VFPU assembly where the
    original SDK or game code used it. The PSP compilers emit almost no VFPU instructions, so that code was
    written as inline `asm` and is reconstructed as such. It is allowed only in a source whose header says
    `asm=vfpu`, with a line starting `Original inline VFPU asm:` giving the reason, and only when every
@@ -58,11 +58,11 @@ The headline figure is **strict**: bytes passing all seven gates over all in-sco
 scope are fixed, it can only rise. The tiers below explain where the remaining work is; each is a share of the same
 denominator.
 
-| Tier | A byte is in this tier when | Measured <!-- hstprogress:begin completion-date -->2026-11-01<!-- hstprogress:end --> (public sources) |
+| Tier | A byte is in this tier when | Measured <!-- hstprogress:begin completion-date -->2026-11-02<!-- hstprogress:end --> (public sources) |
 | --- | --- | --- |
-| T1 | its function matches exactly in isolation (`hstmatch.py`) | <!-- hstprogress:begin completion-t1 -->23.683% (2,196,788 B<!-- hstprogress:end -->; code only, matched one function at a time; data is not counted in this tier) |
-| T2 | it is reproduced by the whole-module build from source (gates 1-4, 6) | <!-- hstprogress:begin completion-t2 -->30.887% (2,865,042 B<!-- hstprogress:end -->; code, data and relocation-table bytes the whole-module build produces from source, so it can exceed T1; retail-derived scaffolding is never counted; current public build reports, both game-module images identical and all generated relocation tables equal) |
-| T3 | T2, and the shifted build passes (gate 5) | <!-- hstprogress:begin completion-t3 -->30.861% (2,862,642 B<!-- hstprogress:end -->; shifted static checks and numeric-address scans passed for counted sources; shifted runtime not run) |
+| T1 | its function matches exactly in isolation (`hstmatch.py`) | <!-- hstprogress:begin completion-t1 -->23.685% (2,197,028 B<!-- hstprogress:end -->; code only, matched one function at a time; data is not counted in this tier) |
+| T2 | it is reproduced by the whole-module build from source (gates 1-4, 6) | <!-- hstprogress:begin completion-t2 -->30.895% (2,865,766 B<!-- hstprogress:end -->; code, data and relocation-table bytes the whole-module build produces from source, so it can exceed T1; retail-derived scaffolding is never counted; current public build reports, both game-module images identical and all generated relocation tables equal) |
+| T3 | T2, and the shifted build passes (gate 5) | <!-- hstprogress:begin completion-t3 -->30.869% (2,863,366 B<!-- hstprogress:end -->; shifted static checks and numeric-address scans passed for counted sources; shifted runtime not run) |
 | T4 = strict | T3, and the source is reviewed (gate 7) | <!-- hstprogress:begin completion-t4 -->0.000% (0 B)<!-- hstprogress:end --> |
 
 Current figures are drawn in [`progress.svg`](progress.svg) and [`progress-map.svg`](progress-map.svg) and computed by

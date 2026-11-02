@@ -26,9 +26,11 @@ this order of precedence:
                                         metadata.source_path its path
   <module>/not-yet-recovered/FUN_<addr> one function of the reviewed list (data/functions-<module>.txt) in neither;
                                         auto_generated, since it is no source file
-  <module>/sdk-library-not-published    the module's Sony SDK library code (origin classes sony-prx and
-                                        gcc-unattributed, docs/GUIDE.md#licensing): counted, as in the README, but its
-                                        reconstructions are not published, so the unit lists no functions
+  <module>/sdk-library-not-published    the module's Sony SDK and middleware code (the origin classes
+                                        hstpublish.EXCLUDED_CLASSES names, docs/GUIDE.md#licensing): counted, as in the
+                                        README, but its reconstructions are not published, so the unit lists no
+                                        functions. It comes first: a function of the SGX sound library stays here even
+                                        though data/translation-units.json puts it in its sgx*.c unit
 Units are in address order within a module. Every function of the reviewed list is in exactly one unit, so the units'
 code bytes and function counts add up to the module figures (`unit_problems` checks it).
 
@@ -144,12 +146,12 @@ def module_units(name: str, functions: list[dict], rows: list[dict], sdk: list[t
     for f in sorted(functions, key=lambda f: f["start"]):
         i = bisect.bisect_right(starts, f["start"]) - 1
         owner = by_start.get(f["start"]) or (widest[i] if i >= 0 and widest[i]["end"] >= f["end"] else None)
-        if f["start"] in tus:
+        if any(s <= f["start"] < e for s, e in sdk):
+            sdk_funcs.append(f)
+        elif f["start"] in tus:
             in_tu.setdefault(tus[f["start"]], []).append((f, owner))
         elif owner is not None:
             owned.setdefault(owner["path"], []).append(f)
-        elif any(s <= f["start"] < e for s, e in sdk):
-            sdk_funcs.append(f)
         else:
             fname = f"FUN_{f['start']:08x}"
             keyed.append((f["start"], {

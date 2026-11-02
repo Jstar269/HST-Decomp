@@ -13,12 +13,24 @@ Every source under src/ (and the near misses under wip/) gets exactly one origin
                     example __ptmf_scall or __destroy_arr/__construct_array)
   sony-prx          code of a Sony system-library module: sources under src/libfont, src/psmfp, src/psmf and
                     src/sharing_font (SONY_PRX_DIRS)
+  sony-middleware-sgx
+                    a function of the SGX sound library, Sony middleware linked into EBOOT.BIN and the Sharing module
+                    as one block (SGX_BLOCKS): treated like the Sony SDK (owner decision 2026-11-01), whatever compiler
+                    profile matches it (a few functions of 16-31 bytes match with mwccpsp too, where both compilers give
+                    the same code)
   gcc-unattributed  compiled with psp-gcc (cc=gcc*) in EBOOT.BIN or the Sharing module and not newlib: Sony SDK
                     code until someone attributes it
 
-Order of the rules: a newlib note first, then the sony-prx directories, then the compiler profile (gcc ->
-gcc-unattributed), then the runtime-name check, else game. A clone (`Clone of src/... (hstclone.py ...)`)
-inherits the class of its exemplar, followed through chains of clones.
+Order of the rules: a newlib note first, then the sony-prx directories, then the SGX block, then the compiler profile
+(gcc -> gcc-unattributed), then the runtime-name check, else game. A clone (`Clone of src/... (hstclone.py ...)`)
+inherits the class of its exemplar, followed through chains of clones, except for the SGX class, which is a class
+of place: a clone inside the SGX block is SGX, and a clone of an SGX function outside the block takes its own class.
+
+SGX_BLOCKS. From the first function to the end of the last function of the SGX units tools/hsttu.py recovers
+(sgxbmg.c, sgxconf.c, sgxport.c, sgxpsp.c, sgxres.c, sgxseq.c, sgxsnd.c, sgxsndnote.c, sgxsys.c, sgxvo.c; their
+assertions name them): 592 functions in each module, all psp-gcc code, between the game's mwccpsp C++ units. The
+library's strings are SAS, AT3, AT3+ and PCM settings, wave, sequence and BMG names, and "SGX system
+initialize/terminate"; it holds no game logic.
 
 The result is written to ORIGINS.json (a JSON object, path relative to the repository root -> class, sorted by
 path) and a table of counts, source bytes and retail code bytes per class is printed. tools/hstpublish.py reads the
@@ -40,7 +52,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstmatch as M
 
 ROOT = M.ROOT
-CLASSES = ("game", "newlib", "mw-runtime", "sony-prx", "gcc-unattributed")
+CLASSES = ("game", "newlib", "mw-runtime", "sony-prx", "sony-middleware-sgx", "gcc-unattributed")
+SGX = "sony-middleware-sgx"
+# [start, end) of the SGX sound library's block per module (see SGX_BLOCKS above; tools/test_hstorigin.py checks
+# them against data/translation-units.json)
+SGX_BLOCKS = {"EBOOT.BIN": (0x0006F10C, 0x00088128), "hstp_trans_main.prx": (0x000708CC, 0x000898E8)}
 SOURCE_TREES = ("src", "wip")
 SOURCE_SUFFIXES = (".c", ".cpp")
 # src/<dir> directories built from Sony system-library modules (hstnewlib.SRC_DIRS names the modules)
@@ -72,14 +88,22 @@ def own_class(path: Path, root: Path = ROOT) -> str:
     if parts[0] == "src" and len(parts) > 2 and parts[1] in SONY_PRX_DIRS:
         return "sony-prx"
     header = M.parse_header(path)
+    if in_sgx_block(header):
+        return SGX
     cc = header.get("cc", "mwcc219")
     if cc.startswith("gcc"):
         return "gcc-unattributed"
     return "mw-runtime" if MW_RUNTIME.match(header["symbol"]) else "game"
 
 
+def in_sgx_block(header: dict) -> bool:
+    block = SGX_BLOCKS.get(header["module"])
+    return bool(block) and block[0] <= header["start"] < block[1]
+
+
 def classify(root: Path = ROOT) -> tuple[dict[str, str], list[str]]:
-    """({path: class}, warnings) for every source under src/ and wip/."""
+    """({path: class}, warnings) for every source under src/ and wip/. SGX is a class of place: a clone inside the
+    SGX block is SGX whatever its exemplar, and a clone outside it of an SGX function takes its own class."""
     files = sources(root)
     exemplar_of: dict[str, str] = {}
     result: dict[str, str] = {}
@@ -100,8 +124,10 @@ def classify(root: Path = ROOT) -> tuple[dict[str, str], list[str]]:
         while cur in exemplar_of and cur not in seen:   # clone of a clone
             seen.append(cur)
             cur = exemplar_of[cur]
-        if cur in result:
-            result[key] = result[cur]
+        if in_sgx_block(M.parse_header(path)):
+            result[key] = SGX
+        elif cur in result:
+            result[key] = result[cur] if result[cur] != SGX else own_class(path, root)
         else:
             warnings.append(f"{key}: exemplar {cur} is not a source here; classified from the clone's own header")
             result[key] = own_class(path, root)

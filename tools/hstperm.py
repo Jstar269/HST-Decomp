@@ -7,7 +7,9 @@ Seeds each unmatched function with its few best MISMATCH candidates from try/gen
 and scored by alignment (words outside the longest common word alignment with retail, so an inserted
 instruction costs one word), applies 1-3 random source mutations per mutant (swap adjacent statements,
 reorder declarations, commute operands, flip comparisons, rewrite increments, change local signedness,
-invert if/else, regroup float chains, inline temporaries), compiles every mutant with hstmatch.py and keeps
+invert if/else, regroup float chains, inline temporaries, and (2026-11-02) introduce temporaries, add or remove
+casts, x = x op y versus x op= y, a[i] versus *(a + i), move declarations, for/while/do-while, `register`,
+commute struct-field reads), compiles every mutant with hstmatch.py and keeps
 the best by that score (hill climbing; ties may drift). Mutations
 need not preserve meaning: only a byte-exact build of the retail function is accepted, and it is written to
 src/ with a provenance note.
@@ -369,12 +371,236 @@ def m_sumorder(lines, lo, hi, rng):
     return True
 
 
+# ---- operators added 2026-11-02 (decomp-permuter style); each keeps the text a single readable C function ----
+KEYWORDS = frozenset("if else for while do return switch case default goto break continue sizeof int unsigned signed char "
+                     "short long void struct union enum const static register volatile float double".split())
+TYPE_WORDS = frozenset("int unsigned signed char short long uint ushort uchar byte undefined undefined1 undefined2 "
+                       "undefined4 undefined8 float double void struct const".split())
+CAST = re.compile(r"\((?:unsigned int|unsigned char|unsigned short|int|uint|short|ushort|char|uchar|byte|undefined[124])\) ?")
+STMT = re.compile(r"^(\s+)(?!return\b|for\b|while\b|if\b|else\b|do\b|switch\b|case\b)[^{};]*;\s*$")
+
+
+def is_decl(line: str) -> bool:
+    """A local declaration (DECL also matches `return a[i];`)."""
+    return bool(DECL.match(line)) and not re.match(r"\s+return\b", line)
+
+
+def indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def block_end(lines, i, hi):
+    """Index of the line holding the brace that closes the block opened on line i, or None."""
+    depth = 0
+    for k in range(i, min(hi, len(lines))):
+        depth += lines[k].count("{") - lines[k].count("}")
+        if depth == 0 and k > i:
+            return k
+    return None
+
+
+def m_temp(lines, lo, hi, rng):
+    """... (A + B) ... -> int tN = A + B; ... tN ...: a temporary for a parenthesised, call-free sub-expression."""
+    cands = []
+    for i in range(max(lo, 1), hi):
+        ln = lines[i]
+        if not STMT.match(ln) or is_decl(ln) or lines[i - 1].strip() not in ("",) and not lines[i - 1].rstrip().endswith(("{", ";", "}")):
+            continue
+        for m in INNER_SUM.finditer(ln):
+            inner = m.group(1).strip()
+            if (" " in inner and PURE.match(inner) and not CAST.fullmatch("(" + inner + ")") and "," not in inner
+                    and not re.search(r"[\w\]]$", ln[:m.start()].rstrip()[-1:])
+                    and not ln[:m.start()].rstrip().endswith(("sizeof", "-"))):
+                cands.append((i, m, inner))
+    if not cands:
+        return False
+    i, m, inner = rng.choice(cands)
+    text = "\n".join(lines)
+    n = 0
+    while re.search(rf"\bt{n}\b", text):
+        n += 1
+    ind = lines[i][:indent_of(lines[i])]
+    lines[i] = lines[i][:m.start()] + f"t{n}" + lines[i][m.end():]
+    lines.insert(i, f"{ind}int t{n} = {inner};")
+    return True
+
+
+def m_cast(lines, lo, hi, rng):
+    """Add or remove a value-preserving cast on an operand."""
+    removals = [(i, m) for i in range(lo, hi) for m in CAST.finditer(lines[i]) if not is_decl(lines[i])]
+    adds = []
+    for i in range(lo, hi):
+        ln = lines[i]
+        if is_decl(ln) or not STMT.match(ln) or "=" not in ln:
+            continue
+        rhs = ln.index("=") + 1
+        for m in re.finditer(r"(?<![\w.>&*(])([A-Za-z_]\w*)(?![\w(\[.>])", ln):
+            if (m.start() >= rhs and m.group(1) not in KEYWORDS and m.group(1) not in TYPE_WORDS
+                    and ln[:m.start()].count("(") <= ln[:m.start()].count(")")):
+                adds.append((i, m))
+    if not removals and not adds:
+        return False
+    if removals and (not adds or rng.random() < 0.5):
+        i, m = rng.choice(removals)
+        lines[i] = lines[i][:m.start()] + lines[i][m.end():]
+    else:
+        i, m = rng.choice(adds)
+        t = rng.choice(("int", "unsigned int", "int"))
+        lines[i] = lines[i][:m.start()] + f"({t}){m.group(1)}" + lines[i][m.end():]
+    return True
+
+
+COMPOUND = re.compile(r"(?<![\w.\]>])(\w+) = \1 (\+|-|\*|\||&|\^|<<|>>) ([^;)]+?)(?=;|\))")
+COMPOUND_ASSIGN = re.compile(r"(?<![\w.\]>])(\w+) (\+|-|\*|\||&|\^|<<|>>)= ([^;)]+?)(?=;|\))")
+
+
+def m_compound(lines, lo, hi, rng):
+    """x = x op y  <->  x op= y"""
+    cands = []
+    for i in range(lo, hi):
+        if is_decl(lines[i]):
+            continue
+        cands += [(i, m, True) for m in COMPOUND.finditer(lines[i])]
+        cands += [(i, m, False) for m in COMPOUND_ASSIGN.finditer(lines[i])]
+    if not cands:
+        return False
+    i, m, forward = rng.choice(cands)
+    if forward:
+        new = f"{m.group(1)} {m.group(2)}= {m.group(3)}"
+    else:
+        y = m.group(3)
+        if re.search(r" (\+|-|\||&|\^|<<|>>|\?) ", y) and not (y.startswith("(") and y.endswith(")")):
+            y = f"({y})"
+        new = f"{m.group(1)} = {m.group(1)} {m.group(2)} {y}"
+    lines[i] = lines[i][:m.start()] + new + lines[i][m.end():]
+    return True
+
+
+INDEX = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)\[(\w+)\]")
+DEREF_SUM = re.compile(r"\*\(([A-Za-z_]\w*) \+ (\w+)\)")
+
+
+def m_index(lines, lo, hi, rng):
+    """a[i] <-> *(a + i)"""
+    cands = []
+    for i in range(lo, hi):
+        if is_decl(lines[i]):
+            continue
+        cands += [(i, m, True) for m in INDEX.finditer(lines[i])]
+        cands += [(i, m, False) for m in DEREF_SUM.finditer(lines[i])]
+    if not cands:
+        return False
+    i, m, forward = rng.choice(cands)
+    new = f"*({m.group(1)} + {m.group(2)})" if forward else f"{m.group(1)}[{m.group(2)}]"
+    lines[i] = lines[i][:m.start()] + new + lines[i][m.end():]
+    return True
+
+
+def m_decl_scope(lines, lo, hi, rng):
+    """Move a declaration to just before its first use (or into the block that holds every use), or up to the top."""
+    base = min((indent_of(lines[i]) for i in range(lo, hi) if lines[i].strip() and indent_of(lines[i])), default=0)
+    cands = []
+    for i in range(lo, hi):
+        m = DECL.match(lines[i]) if is_decl(lines[i]) else None
+        if not m:
+            continue
+        var = re.match(r"\w+", m.group(3)).group(0)
+        uses = [k for k in range(lo, hi) if k != i and re.search(rf"\b{var}\b", lines[k])]
+        if not uses:
+            continue
+        d, first = indent_of(lines[i]), uses[0]
+        if indent_of(lines[first]) == d and first > i + 1:
+            cands.append(("sink", i, first, d))
+        elif indent_of(lines[first]) > d and first > i:
+            k = first
+            while k > i and not (lines[k].rstrip().endswith("{") and indent_of(lines[k]) < indent_of(lines[first])):
+                k -= 1
+            e = block_end(lines, k, hi) if k > i else None
+            if e is not None and all(k < u < e for u in uses):
+                cands.append(("into", i, k + 1, indent_of(lines[k + 1])))
+        if d > base:
+            cands.append(("up", i, lo, base))
+    if not cands:
+        return False
+    kind, i, at, ind = rng.choice(cands)
+    text = " " * ind + lines[i].strip()
+    del lines[i]
+    if at > i:
+        at -= 1
+    lines.insert(at, text)
+    return True
+
+
+FOR_HDR = re.compile(r"^(\s*)for \((.*?);(.*?);(.*?)\) \{\s*$")
+WHILE_HDR = re.compile(r"^(\s*)while \((.+)\) \{\s*$")
+
+
+def m_loop_form(lines, lo, hi, rng):
+    """for <-> while <-> if + do-while with an equivalent guard."""
+    cands = []
+    for i in range(lo, hi):
+        e = block_end(lines, i, hi) if lines[i].rstrip().endswith("{") else None
+        if e is None:
+            continue
+        if any(re.search(r"\bcontinue\b", b) for b in lines[i + 1:e]):
+            continue
+        if FOR_HDR.match(lines[i]):
+            cands.append(("for2while", i, e))
+        elif WHILE_HDR.match(lines[i]):
+            cands += [("while2for", i, e), ("while2do", i, e)]
+    if not cands:
+        return False
+    kind, i, e = rng.choice(cands)
+    if kind == "for2while":
+        ind, init, cond, step = FOR_HDR.match(lines[i]).groups()
+        init, cond, step = init.strip(), cond.strip() or "1", step.strip()
+        head = ([f"{ind}{init};"] if init else []) + [f"{ind}while ({cond}) {{"]
+        tail = ([f"{ind}  {step};"] if step else []) + [lines[e]]
+        lines[i:e + 1] = head + lines[i + 1:e] + tail
+    elif kind == "while2for":
+        ind, cond = WHILE_HDR.match(lines[i]).groups()
+        lines[i] = f"{ind}for (; {cond}; ) {{"
+    else:
+        ind, cond = WHILE_HDR.match(lines[i]).groups()
+        body = [f"  {b}" if b.strip() else b for b in lines[i + 1:e]]
+        lines[i:e + 1] = ([f"{ind}if ({cond}) {{", f"{ind}  do {{"] + body +
+                          [f"{ind}  }} while ({cond});", f"{ind}}}"])
+    return True
+
+
+def m_register(lines, lo, hi, rng):
+    """Add or remove `register` on a local declaration."""
+    plain = [i for i in range(lo, hi) if is_decl(lines[i]) and "register" not in lines[i] and "[" not in lines[i]]
+    regs = [i for i in range(lo, hi) if re.match(r"^\s+register ", lines[i])]
+    if not plain and not regs:
+        return False
+    if regs and (not plain or rng.random() < 0.4):
+        i = rng.choice(regs)
+        lines[i] = lines[i].replace("register ", "", 1)
+    else:
+        i = rng.choice(plain)
+        lines[i] = lines[i][:indent_of(lines[i])] + "register " + lines[i].lstrip()
+    return True
+
+
+FIELD = r"(?:\w+(?:->|\.))+\w+|\w+"
+FIELD_COMMUTE = re.compile(rf"(?<![\w\]\)>.])({FIELD}) (\+|\*|&|\||\^|==|!=) ({FIELD})(?![\w(\[.])")
+
+
+def m_field_commute(lines, lo, hi, rng):
+    """a->x + b->y -> b->y + a->x: reorders independent struct-field reads (COMMUTE only sees plain names)."""
+    return m_regex(lines, lo, hi, rng, FIELD_COMMUTE, lambda m: f"{m.group(3)} {m.group(2)} {m.group(1)}")
+
+
+NEW_MUTATIONS = [(2, m_temp), (2, m_cast), (2, m_compound), (2, m_index), (2, m_decl_scope), (2, m_loop_form),
+                 (1, m_register), (2, m_field_commute)]
+
 MUTATIONS = [
     (3, m_swap), (2, m_decl), (2, lambda l, lo, hi, r: m_regex(l, lo, hi, r, COMMUTE, lambda m: f"{m.group(3)} {m.group(2)} {m.group(1)}")),
     (2, lambda l, lo, hi, r: m_regex(l, lo, hi, r, COMPARE, lambda m: f"{m.group(3)} {FLIP[m.group(2)]} {m.group(1)}")),
     (1, m_incdec), (2, m_sign), (2, m_invert), (2, m_reassoc), (2, m_inline), (2, m_sumorder), (2, m_bound),
     (1, m_ucmp), (2, m_chain_merge), (1, m_ternary), (1, m_hoist),
-]
+] + NEW_MUTATIONS
 
 
 def mutate(text: str, rng: random.Random) -> str | None:
@@ -453,13 +679,33 @@ def align_score(row: dict, theirs: list[int]) -> int:
 def run_scored(cmd: list[str], files: list[Path], part_dir: Path, ends: dict, owner: dict) -> dict:
     """Compile and score files; returns {resolved path: alignment score}."""
     results = {}
+    crashed = unscored = 0
     for c in range(0, len(files), 400):
-        part = part_dir / f"summary-{c // 400}.json"
-        subprocess.run(cmd + [str(part)] + [str(p) for p in files[c:c + 400]], stdout=subprocess.DEVNULL)
-        for row in json.loads(part.read_text(encoding="utf-8")):
-            path = str((M.ROOT / row["source"]).resolve())
-            key = owner[path]
-            results[path] = align_score(row, retail_words(key, ends[key]))
+        todo = [str(p) for p in files[c:c + 400]]
+        for attempt in range(2):
+            part = part_dir / f"summary-{c // 400}-{attempt}.json"
+            done = subprocess.run(cmd + [str(part)] + todo, stdout=subprocess.DEVNULL)
+            if done.returncode == 3 or not part.exists():
+                raise SystemExit(f"hstmatch stopped (exit {done.returncode}): wsl.exe or the compiler machinery failed; "
+                                 "not scoring this part. Re-run after WSL answers again.")
+            again = []
+            for row in json.loads(part.read_text(encoding="utf-8")):
+                path = str((M.ROOT / row["source"]).resolve())
+                if row["status"] == "COMPILE_CRASHED":
+                    # the compiler process died (not a diagnostic): one more compile of exactly these files, counted
+                    crashed += attempt == 0
+                    if attempt == 0:
+                        again.append(path)
+                        continue
+                    unscored += 1
+                    continue
+                key = owner[path]
+                results[path] = align_score(row, retail_words(key, ends[key]))
+            todo = again
+            if not todo:
+                break
+    if crashed:
+        print(f"compiler crashes: {crashed} compiled again, {unscored} still crashed and left unscored", flush=True)
     return results
 
 

@@ -131,10 +131,9 @@ int FUN_002457a0(struct Obj_002457a0 *self)
         d = diff;
         float dist = FUN_00022e44(FUN_000224d8(&d, &d));
         if (dist < 2.0f) {
-            self->vel.y = DAT_003386b0->sub88->target_vel.y;
-            self->vel.z = DAT_003386b0->sub88->target_vel.z;
-            self->vel.w = DAT_003386b0->sub88->target_vel.w;
-            self->vel.x = DAT_003386b0->sub88->target_vel.x;
+            struct Sub88 *sub = DAT_003386b0->sub88;
+            Vec4 tv = sub->target_vel;
+            self->vel = tv;
             self->vel.y = 0.0f;
             self->f264 = 1;
             return 1;
@@ -171,4 +170,13 @@ int FUN_002457a0(struct Obj_002457a0 *self)
 // - 8 words at 0x24599c-0x2459b8: copying target_vel to self->vel; retail loads offsets +4,+8,+12,+0 into f3,f2,f1,f0, then stores.
 // - 8 words at 0x245aa8-0x245ac8: copying res to self->vel; same FP register order differences.
 // Ruled out: struct assignment self->vel = ... directly loads +0,+4,+8,+12 into f3,f2,f1,f0; volatile DAT_003386b0 reload.
-// near miss from lane dsn7 (unreviewed)
+// Re-measured (lane dsn7): 217/217 words, 16 differ, first at +0x1fc.
+// Fixed the earlier global reloads: cache `struct Sub88 *sub = DAT_003386b0->sub88;`
+// once and copy target_vel as a unit (the uncached per-field statements reloaded
+// DAT_003386b0 for each of the four floats, adding 9 words).
+// Residual (both Vec4 copies at +0x1fc and +0x2f0 region): FP register/schedule
+// rotation only. Retail loads src fields +4,+8,+12,+0 into f3,f2,f1,f0 then stores
+// in +0,+4,+8,+12 order; ours loads +0,+4,+8,+12. Tried struct assign, named temp,
+// memberwise y-z-w-x and x-y-z-w orders, C++ copy-ctor/operator=, inline return-by-
+// value; all tie at 16 differ (scheduler-owned FP copy order in this frame context).
+// improved by lane dsn7 (unreviewed): 109 -> 16 differing words

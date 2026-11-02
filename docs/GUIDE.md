@@ -12,9 +12,9 @@ the tiers progress is reported in, are defined in [`COMPLETION.md`](COMPLETION.m
   address names from Ghidra (`FUN_0011d894`), and types are provisional. Every note line says "names and types
   await human review" until a person has reviewed the source.
   <!-- hstprogress:begin guide-source-kinds -->
-- Of the 12,779 sources (measured 2026-11-01), 7,218 are address-substituted **clones** of another matched source
-  (retail contains the same code many times), 1,055 are mechanical translations of Ghidra pseudocode, 1,870 are such
-  translations corrected by hand, 2,405 are hand-written, 136 are instances of container templates, and 85 are newlib
+- Of the 12,774 sources (measured 2026-11-02), 7,207 are address-substituted **clones** of another matched source
+  (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,870 are such
+  translations corrected by hand, 2,413 are hand-written, 136 are instances of container templates, and 85 are newlib
   library functions translated from newlib sources (37 more are clones of them, counted among the clones), and 10 have
   no known note kind.
 - 122 of the sources are newlib library functions compiled with Sony's `psp-gcc` kits; all others are game code
@@ -78,7 +78,8 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
    The tool checks each file against these digests (a gzip-compressed image is inflated first), copies it into
    `<campaign_root>/inputs/`, and writes `ledger/campaign.json` (load segment and reviewed function boundaries,
    from `data/`) and `inputs/revision-selection.json`. It decrypts nothing, and this repository contains no
-   decryption code and does not explain how to decrypt. A module you leave out is skipped, and `hstmatch.py` then cannot check that module's sources.
+   decryption code: decrypt your own disc on your own machine with a tool of your choice, for example Nakagawa
+   Recomp's `nk_decrypt` ([how to run it](https://github.com/Jstar269/nakagawa-recomp/blob/main/docs/SETUP.md#encrypted-executables)). A module you leave out is skipped, and `hstmatch.py` then cannot check that module's sources.
 
 3. Describe your machine to the tools:
 
@@ -114,7 +115,7 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
 
 ```text
 python tools/hstmatch.py --all                   # rebuild and compare every source under src/
-python tools/hstmatch.py --all --parallel 12     # more concurrent compiles (default 6)
+python tools/hstmatch.py --all --parallel 4      # concurrent compiles (default 6; 4 recommended, AGENTS.md)
 python tools/hstmatch.py src/eboot/FUN_00000000.c    # specific files
 ```
 
@@ -151,7 +152,7 @@ hstmatch.json` reuses a `hstmatch.py --json` run and its `build/` directories); 
 ```text
 python tools/hstbuild.py EBOOT.BIN                  # one module
 python tools/hstbuild.py EBOOT.BIN --shift 0x1000   # and the shifted build (gate 5, static half)
-python tools/hstbuild.py all --parallel 6           # all six
+python tools/hstbuild.py all --parallel 4           # all six
 ```
 
 `--shift N` links the same objects again with N bytes of padding ahead of the code and N more ahead of the data (a
@@ -211,12 +212,12 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
   `gcc131-` or `gcc171-` plus `O1`, `O2`, `O3` or `Os` select a Sony `psp-gcc` kit (`gcc171x-*` adds `-mext`);
   `gcc131-O0` and `gcc171-O0` select the unoptimized builds (Sony SDK objects with a `move s8,sp` frame pointer).
   `gcc402x-O0`/`O1`/`O2`/`O3`/`Os` is a SECONDARY profile (owner decision 2026-10-27): open-source GCC 4.0.2 with the
-  pspdev Allegrex patch and lbp-decomp's measured Allegrex tuning (`-mpreferred-stack-boundary=4`), the kit shared
-  with lbp-decomp under the `gcc4_home` setting (provenance: the maintainers' `compilers/lbp-gcc4/PROVENANCE.json`,
+  pspdev Allegrex patch and lbp-psp-decomp's measured Allegrex tuning (`-mpreferred-stack-boundary=4`), the kit shared
+  with lbp-psp-decomp under the `gcc4_home` setting (provenance: the maintainers' `compilers/lbp-gcc4/PROVENANCE.json`,
   hashed by the toolchain lock). Use it only for functions no gcc131/gcc171 profile reproduces (later-compiler
   shapes: duplicated epilogues, tail calls, word loads where GCC 3.3 narrows).
   <!-- hstprogress:begin guide-profiles -->
-  Measured 2026-11-01, the public sources use `mwcc219` (12,657 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
+  Measured 2026-11-02, the public sources use `mwcc219` (12,652 sources), `gcc171-O2` (103 sources), `gcc171x-O2` (17
   sources) and `gcc171x-O1` (2 sources).
   <!-- hstprogress:end -->
 - `rodata=0xADDR`, `data=`, `sdata=`, `bss=`, `sbss=`: where the object's sections go when the function refers to
@@ -256,12 +257,13 @@ raw offset casts).
 | `hstconfig.py` | Load, list and check `hst-config.json`; the other tools read their paths through it. |
 | `hstcov.py` | Exact-match coverage per module against the campaign ledger. |
 | `hstobjdiff.py` | Generate an [objdiff](https://github.com/encounter/objdiff) project (`objdiff.json`, objects under `build/objdiff/`) for per-function diffs against retail and a progress report; `check` verifies it against `hstmatch.py` and `hstcov.py` (see `docs/OBJDIFF.md`). |
-| `hstgate.py` | The fake-match gate (`docs/COMPLETION.md`, gate 2): refuses a source with `asm`/`__asm__` that emits instructions, assembler data directives, `#pragma asm`, hand-steered `.text` data or a non-header `#include`; a `register T x asm("$N")` binding, an empty barrier and VFPU-only inline asm under the project rule (header `asm=vfpu`, an `Original inline VFPU asm:` reason line, VFPU instructions only; owner decision 2026-10-27) are allowed and tagged as idioms. `hstmatch.py`, `hstlint.py` and `hstlane.py harvest` all call it. |
+| `hstgate.py` | The fake-match gate (`docs/COMPLETION.md`, gate 2): refuses a source with `asm`/`__asm__` that emits instructions, assembler data directives, `#pragma asm`, hand-steered `.text` data or a non-header `#include`; a `register T x asm("$N")` binding, an empty barrier and VFPU-only inline asm under the project rule (header `asm=vfpu`, an `Original inline VFPU asm:` reason line, VFPU instructions only; owner decision 2026-10-27) are allowed and tagged as idioms. `hstmatch.py`, `hstlint.py` and the maintainer's `hstlane.py harvest` (not in the public tree) all call it. |
 | `hstlint.py` | Quality report over `src/` (note kinds, matching idioms, conflicting declarations). |
 | `hstread.py` | Readability work: `rank` (least readable sources and address pages), `tidy` (Ghidra typedef block to `hst/types.h`), `twins` and `harvest` (port a readability edit to the source's twins; copy a lane's edits back). |
 | `hstgen.py` | Translate Ghidra pseudocode into candidate C/C++ variants and install the exact ones. |
 | `hstcat.py` | Classify why generated candidates mismatched (frame, register allocation, ...). |
-| `hstperm.py` | Random-mutation search that turns near-miss candidates into exact ones. |
+| `hstperm.py` | Random-mutation search that turns near-miss candidates into exact ones; the operators include loop forms (for/while/do-while), compound assignment, index versus pointer arithmetic, temporaries, casts, declaration scope, `register` and field-read order. |
+| `hstflagsweep.py` | Compile near-miss sources under every mwccpsp build and a set of option combinations (`--flags`, so never a profile match) and tabulate the words that still differ; a 0 is a finding about the translation unit's flags, to be checked against its neighbours. |
 | `hstclone.py` | Propagate an exact source to every function whose code differs only in addresses. |
 | `hstfamilies.py` | Rank unmatched clone families by total bytes (one match unlocks a whole family). |
 | `hsttmpl.py` | Instantiate known container templates for every element size found in retail. |
@@ -273,7 +275,7 @@ raw offset casts).
 | `hstfamily.py` | Compiler-family predictor (Metrowerks game code versus Sony psp-gcc SDK code) for functions that have no source yet; `evaluate` reports its cross-validated accuracy, `predict` writes `try/family-predictions.json`, which `hstqueue.py --public-first` uses. |
 | `hstreview.py` | Local web app (127.0.0.1) for the owner's human review of matched sources. |
 | `hstsample.py` | Write the reference-function sample manifest (digests of sources, targets and toolchain). |
-| `hstorigin.py` | Classify every source by origin (`game`, `newlib`, `mw-runtime`, `sony-prx`, `gcc-unattributed`) and write `ORIGINS.json`; prints counts and bytes per class. |
+| `hstorigin.py` | Classify every source by origin (`game`, `newlib`, `mw-runtime`, `sony-prx`, `sony-middleware-sgx`, `gcc-unattributed`) and write `ORIGINS.json`; prints counts and bytes per class. |
 | `hstbootstrap.py` | `--out DIR --eboot FILE --sharing FILE`: check your decrypted executables against `data/modules.json` and write the campaign directory (ledger and input selection) the other tools read. |
 | `hstpublish.py` | `--out DIR`: copy the would-be public tree, without the Sony SDK classes and without anything gitignored, and print what was left out. Never touches a git remote. |
 | `hstpublic.py` | Maintainers: `sync` mirrors the `hstpublish.py` tree into the public-branch worktree and commits it; `check COMMIT` (run by the pre-push hook) refuses a commit that contains a non-publishable source. |
@@ -299,12 +301,13 @@ also run external AI agent lanes with orchestration scripts that are kept out of
 | `newlib` | a newlib library function (`Library source: newlib ...` note), under newlib's own terms |
 | `mw-runtime` | built with `mwccpsp`, but the symbol is a Metrowerks runtime name (`__ptmf_scall`, `__destroy_*`, `__construct_*`) |
 | `sony-prx` | code of a Sony system-library module (`libfont`, `scePsmf`, `scePsmfP`), kept in `src/libfont`, `src/psmf`, `src/psmfp` and `src/sharing_font` in the maintainers' tree |
+| `sony-middleware-sgx` | the SGX sound library, Sony middleware linked into both modules as one block: treated like the Sony SDK |
 | `gcc-unattributed` | `psp-gcc`-built code of `EBOOT.BIN` or the Sharing module that is not newlib: treated as Sony SDK until it is attributed |
 
 `python tools/hstorigin.py` prints the current number of sources, source bytes and retail code bytes of each class.
 
 `python tools/hstpublish.py --out DIR` copies the tracked files into a would-be public tree in `DIR` (a new or empty
-directory), leaving out the `sony-prx` and `gcc-unattributed` sources, the maintainer-only paths (below), anything git
+directory), leaving out the `sony-prx`, `sony-middleware-sgx` and `gcc-unattributed` sources, the maintainer-only paths (below), anything git
 tracks although `.gitignore` says it is ignored, and the names of the left-out sources in the copied `ORIGINS.json`.
 It prints what it left out (`--list` names every file) and runs only the local, read-only `git ls-files`: it never
 touches a git remote. The classes to leave out are the one setting `EXCLUDED_CLASSES` at the top of

@@ -138,11 +138,13 @@ class BlockTests(unittest.TestCase):
         self.assertIn("| **Code matched** (T1) | **9.0%** | 450 of the 5,000 code bytes", glance)
         self.assertIn("| **Functions matched** (T1) | **10.0%** | 15 of the 150 game functions. |", glance)
         self.assertIn("| **Built from source** (T2) | **12.3%** |", glance)
-        self.assertTrue(glance.endswith("That figure is 0.0%. Measured 2000-02-03 with `python tools/hstprogress.py`."))
+        self.assertTrue(glance.endswith("That figure is 0.0%. Measured 2000-02-03 from the maintainer's private ledger of accepted proofs by "
+                                       "`tools/hstprogress.py`, which needs that ledger."))
         built = P.tier_ladder(10000, 450, {"A": {"module": "A", "t2_source_bytes": {"src/a.c": 1234},
                                                  "built": "2000-01-31"}}, None)
         dated = P.render_blocks(fig(), built, KINDS, "2000-02-03")["readme-glance"]
-        self.assertTrue(dated.endswith("Measured 2000-02-03 with `python tools/hstprogress.py`; built from source by "
+        self.assertTrue(dated.endswith("Measured 2000-02-03 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which "
+                                       "needs that ledger; built from source by "
                                        "the whole-module build of 2000-01-31."))
         self.assertEqual(P.DATE.search(dated).group(0), "2000-02-03")     # --check-readme reads the first date
         guide = b["guide-source-kinds"]

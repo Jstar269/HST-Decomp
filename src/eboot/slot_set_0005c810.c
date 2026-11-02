@@ -1,6 +1,5 @@
 /* HSTMATCH module=EBOOT.BIN start=0x0005c810 end=0x0005c854 symbol=FUN_0005c810 lang=c99 */
 /* Hand-written reconstruction (external matching lane); exact match verified; names and types await human review. */
-/* HSTMATCH module=EBOOT.BIN start=0x0005c810 end=0x0005c854 symbol=FUN_0005c810 lang=c99 */
 void FUN_0005c810(int param_1, int param_2, float *param_3)
 {
   unsigned int uVar1;

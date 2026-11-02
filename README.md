@@ -41,11 +41,11 @@ their owners, are shown only to identify the game, and are not covered by this p
 
 | | Progress | What it counts |
 |---|---|---|
-| **Code matched** (T1) | **38.1%** | 2,196,788 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
-| **Functions matched** (T1) | **65.1%** | 12,782 of the 19,634 game functions. |
+| **Code matched** (T1) | **38.1%** | 2,197,028 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
+| **Functions matched** (T1) | **65.1%** | 12,777 of the 19,634 game functions. |
 | **Built from source** (T2) | **30.9%** | The share of the game's program files that the whole build reproduces, byte for byte, from this source. |
 
-Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-01 with `python tools/hstprogress.py`.
+Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-02 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger.
 
 <!-- hstprogress:end -->
 
@@ -62,9 +62,10 @@ with. Every task here needs your own copy of the game. You can also re-check eve
 machine:
 
 1. Bring your own copy of the game. The tools need its two executables in decrypted form; this repository contains
-   no decryption code and does not explain how to decrypt them.
+   no decryption code. You can decrypt your own disc on your own machine with a tool of your choice, for example
+   Nakagawa Recomp's `nk_decrypt` ([how to run it](https://github.com/Jstar269/nakagawa-recomp/blob/main/docs/SETUP.md#encrypted-executables)).
 2. Install the compilers in WSL and set up the campaign directory: [Setup](docs/GUIDE.md#setup).
-3. Run `python tools/hstmatch.py --all`.
+3. Run `python tools/hstmatch.py --all --parallel 4`.
 
 **Where does a fix belong?** If the game misbehaves in the recompiled player, the cause is usually general: a missing
 or wrong system-call behaviour, an instruction form, a display-list command or a build step. That work belongs in
@@ -80,14 +81,14 @@ output of the game to web tools such as decomp.me, pastebins or public issues.
 
 <!-- hstprogress:begin readme-progress -->
 
-**12,779 exact sources** (12,782 functions) and 1,284 near misses, measured 2026-11-01 with `python tools/hstcov.py`
+**12,774 exact sources** (12,777 functions) and 1,287 near misses, measured 2026-11-02 with `python tools/hstcov.py`
 and counted in code bytes:
 
 | Module | Matched / functions | Matched / code bytes | Share of bytes |
 |---|---|---|---|
-| `EBOOT.BIN` | 6,518 / 9,804 | 1,145,064 / 2,849,076 | 40.191 % |
-| `hstp_trans_main.prx` (Sharing Version) | 6,264 / 9,830 | 1,051,724 / 2,914,004 | 36.092 % |
-| **Both** | 12,782 / 19,634 | 2,196,788 / 5,763,080 | 38.118 % |
+| `EBOOT.BIN` | 6,520 / 9,804 | 1,145,388 / 2,849,076 | 40.202 % |
+| `hstp_trans_main.prx` (Sharing Version) | 6,257 / 9,830 | 1,051,640 / 2,914,004 | 36.089 % |
+| **Both** | 12,777 / 19,634 | 2,197,028 / 5,763,080 | 38.122 % |
 
 <!-- hstprogress:end -->
 
