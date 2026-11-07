@@ -198,7 +198,10 @@ path = [
   "src/sharing_main/FUN_0000b190.c",
   "src/sharing_main/FUN_0000b3d4.c",
   "src/sharing_main/FUN_0000b7b4.c",
+  "src/sharing_main/FUN_0000bc4c.c",
   "src/sharing_main/FUN_0000bd14.c",
+  "src/sharing_main/FUN_0000bf4c.c",
+  "src/sharing_main/FUN_0000c018.c",
   "src/sharing_main/kernel_rem_pio2f_0000a568.c",
 ]
 precedence = "override"
@@ -256,6 +259,7 @@ path = [
   "src/eboot/FUN_00014438.c",
   "src/eboot/FUN_000144b8.c",
   "src/eboot/FUN_0001aca4.c",
+  "src/sharing_main/FUN_0000f208.c",
   "src/sharing_main/FUN_0000fd34_0000fd34.c",
   "src/sharing_main/FUN_00012ad0_00012ad0.c",
   "src/sharing_main/FUN_000143b0_000143b0.c",
