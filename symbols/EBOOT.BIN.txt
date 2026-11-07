@@ -427,3 +427,5 @@ DAT_002c0e1c = 0x002c0e1c;   # message string table entry (FUN_002a4a84) (agent)
 DAT_002c0e18 = 0x002c0e18;   # message string table entry (FUN_002a4a84) (agent) [lane dsn8]
 FUN_0001ca58 = 0x0001ca58;   # via lane dsn8 [lane dsn8]
 FUN_0001cb88 = 0x0001cb88;   # via lane dsn8 [lane dsn8]
+__vt__10C_001554d0 = 0x00308694;   # src/eboot/cmd_factory_001554d0.cpp (hst-decomp-b clone)
+f_000ffb8c__13Elem_001054c0Fb = 0x000ffb8c;   # PTMF target stored by for_each_bind2nd_00101ce8.cpp (hst-decomp-b)

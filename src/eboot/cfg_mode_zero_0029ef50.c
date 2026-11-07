@@ -1,0 +1,5 @@
+/* HSTMATCH module=EBOOT.BIN start=0x0029ef50 end=0x0029ef70 symbol=FUN_0029ef50 lang=c99 */
+/* Hand-written reconstruction from the disassembly; exact match verified; names and types await human review. */
+struct Cfg { char pad[0x8b]; signed char lo : 4; signed char mode : 2; };
+extern struct Cfg *DAT_002cfc8c;
+int FUN_0029ef50(void) { return (DAT_002cfc8c->mode != 0) ^ 1; }

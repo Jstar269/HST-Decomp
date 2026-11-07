@@ -41,11 +41,11 @@ their owners, are shown only to identify the game, and are not covered by this p
 
 | | Progress | What it counts |
 |---|---|---|
-| **Code matched** (T1) | **38.1%** | 2,198,032 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
-| **Functions matched** (T1) | **65.1%** | 12,780 of the 19,634 game functions. |
+| **Code matched** (T1) | **39.5%** | 2,274,780 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
+| **Functions matched** (T1) | **68.2%** | 13,397 of the 19,634 game functions. |
 | **Built from source** (T2) | **30.9%** | The share of the game's program files that the whole build reproduces, byte for byte, from this source. |
 
-Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-02 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger.
+Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-07 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger; built from source by the whole-module build of 2026-11-02.
 
 <!-- hstprogress:end -->
 
@@ -81,14 +81,14 @@ output of the game to web tools such as decomp.me, pastebins or public issues.
 
 <!-- hstprogress:begin readme-progress -->
 
-**12,777 exact sources** (12,780 functions) and 1,287 near misses, measured 2026-11-02 with `python tools/hstcov.py`
+**13,394 exact sources** (13,397 functions) and 1,281 near misses, measured 2026-11-07 with `python tools/hstcov.py`
 and counted in code bytes:
 
 | Module | Matched / functions | Matched / code bytes | Share of bytes |
 |---|---|---|---|
-| `EBOOT.BIN` | 6,523 / 9,804 | 1,146,392 / 2,849,076 | 40.237 % |
-| `hstp_trans_main.prx` (Sharing Version) | 6,257 / 9,830 | 1,051,640 / 2,914,004 | 36.089 % |
-| **Both** | 12,780 / 19,634 | 2,198,032 / 5,763,080 | 38.140 % |
+| `EBOOT.BIN` | 6,739 / 9,804 | 1,161,024 / 2,849,076 | 40.751 % |
+| `hstp_trans_main.prx` (Sharing Version) | 6,658 / 9,830 | 1,113,756 / 2,914,004 | 38.221 % |
+| **Both** | 13,397 / 19,634 | 2,274,780 / 5,763,080 | 39.472 % |
 
 <!-- hstprogress:end -->
 

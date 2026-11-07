@@ -39,6 +39,55 @@ def published() -> dict[str, str]:
             "docs/objdiff-report.json": json.dumps(objdiff())}
 
 
+def fn(name: str, address: int, size: int, matched: bool = False) -> dict:
+    f = {"name": name, "size": str(size), "metadata": {"virtual_address": str(address)}, "address": str(address)}
+    if matched:
+        f["fuzzy_match_percent"] = 100.0
+    return f
+
+
+def unit(doc: dict, name: str) -> dict:
+    return next(u for u in doc["units"] if u["name"] == name)
+
+
+def report(units: list[dict], matched: int, functions: int) -> dict:
+    return {"measures": {"total_code": "1000", "matched_code": str(matched), "total_functions": 50,
+                         "matched_functions": functions, "total_units": len(units)}, "units": units}
+
+
+def structural() -> tuple[dict[str, str], dict[str, str]]:
+    """A published report and a candidate in which FUN_10 left its not-yet-recovered unit for a source unit and
+    FUN_30 (SDK class, unmatched in the public figures) left the recovered file sgxa.c for the unlisted SDK unit."""
+    meta = {"module_name": "M"}
+    src20 = {"name": "src/m/f_20.c", "measures": {"total_code": "12", "matched_code": "12", "total_functions": 1,
+                                                  "matched_functions": 1},
+             "functions": [fn("FUN_20", 0x20, 12, True)], "metadata": meta}
+    old_units = [
+        {"name": "M/not-yet-recovered/FUN_10", "measures": {"total_code": "8", "total_functions": 1},
+         "functions": [fn("FUN_10", 0x10, 8)], "metadata": dict(meta, auto_generated=True)},
+        {"name": "M/sgxa.c", "measures": {"total_code": "24", "total_functions": 2},
+         "functions": [fn("FUN_28", 0x28, 8), fn("FUN_30", 0x30, 16)], "metadata": meta},
+        {"name": "M/sdk-library-not-published", "measures": {"total_code": "100", "total_functions": 10},
+         "metadata": dict(meta, auto_generated=True)},
+        src20]
+    new_units = [
+        {"name": "src/m/f_10.c", "measures": {"total_code": "8", "matched_code": "8", "total_functions": 1,
+                                              "matched_functions": 1},
+         "functions": [fn("FUN_10", 0x10, 8, True)], "metadata": meta},
+        {"name": "M/sgxa.c", "measures": {"total_code": "8", "total_functions": 1},
+         "functions": [fn("FUN_28", 0x28, 8)], "metadata": meta},
+        {"name": "M/sdk-library-not-published", "measures": {"total_code": "116", "total_functions": 11},
+         "metadata": dict(meta, auto_generated=True)},
+        src20]
+    old = dict(published(), **{"docs/objdiff-report.json": json.dumps(report(old_units, 12, 1))})
+    new = dict(published(), **{"docs/objdiff-report.json": json.dumps(report(new_units, 20, 2))})
+    # one unit fewer, as when several matches of one source leave their units
+    doc = json.loads(new["docs/objdiff-report.json"])
+    doc["measures"]["total_units"] = 3
+    new["docs/objdiff-report.json"] = json.dumps(doc)
+    return old, new
+
+
 class GuardTests(unittest.TestCase):
     def test_equal_or_higher_figures_pass(self) -> None:
         self.assertEqual(R.guard(published(), published()), [])
@@ -85,6 +134,42 @@ class GuardTests(unittest.TestCase):
         cand = milestones()
         cand["milestones"][1]["detail"] = "2 candidate spans open"
         self.assertEqual(R.lowered("docs/milestones.json", milestones(), cand), [])
+
+    def test_unit_layout_changes_from_new_matches_pass(self) -> None:
+        # the 2026-11-07 case: matched functions leave their not-yet-recovered units for source units, and SDK-class
+        # matches leave a recovered file's unit for the unlisted SDK unit; every match figure goes up
+        self.assertEqual(R.guard(*structural()), [])
+
+    def test_a_vanished_unit_whose_function_is_not_matched_elsewhere_refuses(self) -> None:
+        old, new = structural()
+        doc = json.loads(new["docs/objdiff-report.json"])
+        unit(doc, "src/m/f_10.c")["functions"][0]["fuzzy_match_percent"] = 99.0
+        drops = R.guard(old, dict(new, **{"docs/objdiff-report.json": json.dumps(doc)}))
+        self.assertTrue(any("FUN_10" in d and "not matched" in d for d in drops), drops)
+        del unit(doc, "src/m/f_10.c")["functions"][0]
+        drops = R.guard(old, dict(new, **{"docs/objdiff-report.json": json.dumps(doc)}))
+        self.assertTrue(any("FUN_10" in d and "disappeared" in d for d in drops), drops)
+
+    def test_a_function_the_unlisted_unit_does_not_absorb_refuses(self) -> None:
+        old, new = structural()
+        doc = json.loads(new["docs/objdiff-report.json"])
+        unit(doc, "M/sdk-library-not-published")["measures"] = {"total_code": "100", "total_functions": 10}
+        drops = R.guard(old, dict(new, **{"docs/objdiff-report.json": json.dumps(doc)}))
+        self.assertTrue(any("FUN_30" in d and "disappeared" in d for d in drops), drops)
+        # a function that was matched cannot vanish into the unlisted unit, which counts no matched bytes
+        doc = json.loads(old["docs/objdiff-report.json"])
+        unit(doc, "M/sgxa.c")["functions"][1]["fuzzy_match_percent"] = 100.0
+        drops = R.guard(dict(old, **{"docs/objdiff-report.json": json.dumps(doc)}), new)
+        self.assertTrue(any("FUN_30" in d and "disappeared" in d for d in drops), drops)
+
+    def test_a_matched_figure_drop_still_refuses_beside_layout_changes(self) -> None:
+        old, new = structural()
+        doc = json.loads(new["docs/objdiff-report.json"])
+        doc["measures"]["matched_code"] = "4"
+        unit(doc, "src/m/f_20.c")["measures"]["matched_code"] = "4"
+        drops = R.guard(old, dict(new, **{"docs/objdiff-report.json": json.dumps(doc)}))
+        self.assertIn("docs/objdiff-report.json matched_code: 12 published, now 4", drops)
+        self.assertIn("docs/objdiff-report.json src/m/f_20.c.matched_code: 12 published, now 4", drops)
 
     def test_a_file_never_published_has_no_baseline(self) -> None:
         self.assertEqual(R.guard({"progress.json": None, "docs/milestones.json": None,

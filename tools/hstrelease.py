@@ -110,12 +110,84 @@ def figures(name: str, doc) -> dict[str, float | None]:
             out[f"{ms['id']}.reached"] = 1.0 if ms.get("reached") else 0.0
             out[f"{ms['id']}.not_regressed"] = 0.0 if ms.get("regressed") else 1.0
     elif name == "docs/objdiff-report.json":
-        def measures(prefix: str, m: dict) -> None:
+        # The layout of the units is not a figure: a function that becomes matched leaves its not-yet-recovered unit
+        # (the unit vanishes, `total_units` falls), and an SDK-class match leaves a recovered file's unit for the
+        # unlisted SDK unit (that unit's total_* fall). moved() checks instead that every such function is still
+        # accounted for. The aggregate measures and every unit's match measures stay figures.
+        def measures(prefix: str, m: dict, unit: bool) -> None:
             for k, v in m.items():
+                if (unit and k.startswith("total_")) or (not unit and k == "total_units"):
+                    continue
                 out[f"{prefix}{k}"] = None if v is None else float(v)
-        measures("", doc.get("measures", {}))
+        measures("", doc.get("measures", {}), False)
         for unit in doc.get("units", []):
-            measures(f"{unit['name']}.", unit.get("measures", {}))
+            measures(f"{unit['name']}.", unit.get("measures", {}), True)
+    return out
+
+
+def _module(unit: dict) -> str:
+    return (unit.get("metadata") or {}).get("module_name") or unit["name"].split("/", 1)[0]
+
+
+def _functions(unit: dict) -> dict[str, tuple[str, int, bool]]:
+    """{address: (name, size, matched)} of a unit's listed functions; matched means fuzzy_match_percent 100."""
+    out = {}
+    for f in unit.get("functions") or []:
+        address = str((f.get("metadata") or {}).get("virtual_address", f.get("address", f["name"])))
+        out[address] = (f["name"], int(f.get("size") or 0), float(f.get("fuzzy_match_percent") or 0.0) >= 100.0)
+    return out
+
+
+def moved(name: str, old_doc, new_doc) -> list[str]:
+    """Every function listed in a published unit of the objdiff report that is no longer listed in that unit and is
+    not accounted for in the candidate. Accounted for means: listed in another unit of the same module, matched, at
+    least as large as before; or, for a function that was unmatched, absorbed by the module's unlisted unit (an
+    auto-generated unit that lists no functions, the SDK code that is counted but not published), whose
+    total_functions and total_code grow by at least the absorbed count and bytes."""
+    if name != "docs/objdiff-report.json":
+        return []
+    old_units = {u["name"]: u for u in old_doc.get("units", [])}
+    new_units = {u["name"]: u for u in new_doc.get("units", [])}
+    listed: dict[tuple[str, str], tuple[str, str, int, bool]] = {}
+    for u in new_units.values():
+        for address, (fname, size, matched) in _functions(u).items():
+            listed[(_module(u), address)] = (u["name"], fname, size, matched)
+    out = []
+    pending: list[tuple[str, str]] = []  # (module, description) of unmatched functions no unit lists any more
+    absorbed: dict[str, list[int]] = {}
+    for uname, u in old_units.items():
+        still = _functions(new_units[uname]) if uname in new_units else {}
+        for address, (fname, size, matched) in _functions(u).items():
+            if address in still:
+                continue
+            where = f"{name} {uname}: function {fname} ({size} B)"
+            now = listed.get((_module(u), address))
+            if now is not None:
+                nunit, _, nsize, nmatched = now
+                if not nmatched or nsize < size:
+                    out.append(f"{where} moved to {nunit} but is not matched there at {size} B or more")
+            elif not matched:
+                acc = absorbed.setdefault(_module(u), [0, 0])
+                acc[0] += 1
+                acc[1] += size
+                pending.append((_module(u), where))
+            else:
+                out.append(f"{where} disappeared from the report (it was matched)")
+    grown = {}
+    for uname, u in new_units.items():
+        if u.get("functions") or not (u.get("metadata") or {}).get("auto_generated"):
+            continue
+        before = (old_units.get(uname) or {}).get("measures", {})
+        after = u.get("measures", {})
+        g = grown.setdefault(_module(u), [0, 0])
+        g[0] += int(after.get("total_functions") or 0) - int(before.get("total_functions") or 0)
+        g[1] += int(after.get("total_code") or 0) - int(before.get("total_code") or 0)
+    for module, where in pending:
+        count, size = absorbed[module]
+        g = grown.get(module, [0, 0])
+        if g[0] < count or g[1] < size:
+            out.append(f"{where} disappeared from the report (the module's unlisted units grew by {g[0]} "
+                       f"functions / {g[1]} B, {count} functions / {size} B left the listed units)")
     return out
 
 
@@ -146,7 +218,8 @@ def guard(published: dict[str, str | None], candidate: dict[str, str]) -> list[s
         if name not in candidate:
             out.append(f"{name}: published, now missing")
             continue
-        out += lowered(name, json.loads(published[name]), json.loads(candidate[name]))
+        old_doc, new_doc = json.loads(published[name]), json.loads(candidate[name])
+        out += lowered(name, old_doc, new_doc) + moved(name, old_doc, new_doc)
     return out
 
 

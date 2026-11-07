@@ -1,6 +1,6 @@
 {
  "schema": "hst-decomp.milestone-record.v1",
- "generated": "2026-11-02",
+ "generated": "2026-11-07",
  "milestones": [
   {
    "id": "inventory",
@@ -13,40 +13,40 @@
   {
    "id": "game-code",
    "title": "Game code matched",
-   "progress": 38.855082199045434,
-   "detail": "2,198,032 of 5,657,000 code bytes (106,080 B of Sony code kept out of this repository are not counted)",
+   "progress": 40.25321455215693,
+   "detail": "2,274,780 of 5,651,176 code bytes (111,904 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
   {
    "id": "all-code",
    "title": "All code matched",
-   "progress": 38.855082199045434,
-   "detail": "2,198,032 of 5,657,000 code bytes (232,688 B of Sony code kept out of this repository are not counted)",
+   "progress": 40.25321455215693,
+   "detail": "2,274,780 of 5,651,176 code bytes (238,512 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
   {
    "id": "psp-rebuild",
    "title": "PSP rebuild",
-   "progress": 31.751219408426262,
-   "detail": "2,865,766 of 9,025,688 image bytes from source in the whole-module build",
+   "progress": 31.771720726609626,
+   "detail": "2,865,766 of 9,019,864 image bytes from source in the whole-module build",
    "reached": null,
    "regressed": false
   },
   {
    "id": "psp-moddable",
    "title": "Moddable PSP rebuild",
-   "progress": 31.724628637728227,
-   "detail": "2,863,366 of 9,025,688 image bytes from source in the relocated build",
+   "progress": 31.745112786622947,
+   "detail": "2,863,366 of 9,019,864 image bytes from source in the relocated build",
    "reached": null,
    "regressed": false
   },
   {
    "id": "full-rebuild",
    "title": "Every module rebuilt",
-   "progress": 31.751219408426262,
-   "detail": "2,865,766 of 9,025,688 image bytes from source in the whole-module build",
+   "progress": 31.771720726609626,
+   "detail": "2,865,766 of 9,019,864 image bytes from source in the whole-module build",
    "reached": null,
    "regressed": false
   },
@@ -62,7 +62,7 @@
    "id": "platform-layer",
    "title": "Platform layer",
    "progress": 3.4615384615384617,
-   "detail": "9 of 260 imported system functions complete in Nakagawa; 213 partial or unreviewed, 37 refused or fake, 1 missing",
+   "detail": "9 of 260 imported system functions complete in Nakagawa; 214 partial or unreviewed, 36 refused or fake, 1 missing",
    "reached": null,
    "regressed": false
   },
