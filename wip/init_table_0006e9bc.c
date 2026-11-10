@@ -1,15 +1,10 @@
 /* HSTMATCH module=EBOOT.BIN start=0x0006e9bc end=0x0006ea5c symbol=FUN_0006e9bc lang=c99 */
-/* NEAR MISS: 40/40 words, 7 differ.
-   The whole body matches except the placement of the incoming-parameter copy:
-   retail keeps `n` in a1 for its first uses and copies it to s1 just before the
-   first call (`sw a1,0(a0)` / `move s0,a0` / `sll v0,v0,0x4` / `move s1,a1`),
-   while ours copies a1 -> s1 in the prologue and reuses s1 for the multiply and
-   the store (`move s1,a1` / `sll v0,s1,0x3` / `sw s1,0(a0)`); the s0 save also
-   moves with it (retail keeps `sw s0,4(sp)` in the prologue).
-   Everything else (the two calls, the argument setup order, the zero-fill loop
-   with its reloaded bound and buffer pointer) is byte-exact. */
+/* NEAR MISS: 40/40 words, 6 differ (lane pn4; was 7 in lane om1's wip, whose notes follow the code).
+   An `int n` parameter with an unsigned-typed count prototype lets the multiply read a1 directly like retail;
+   the `p->count = n` store still reads the s1 copy (retail: a1) and the copy sits before the store instead of
+   just before the first jal. */
 extern void *FUN_00000a90(unsigned int n);
-extern void *FUN_000008d8(void *mem, void (*ctor)(void *), void (*dtor)(void *), int size, int count);
+extern void *FUN_000008d8(void *mem, void (*ctor)(void *), void (*dtor)(void *), unsigned int size, unsigned int count);
 extern void FUN_0005a8ec(void *);
 extern void FUN_0005aeac(void *);
 
@@ -19,7 +14,7 @@ struct Rec {
   unsigned char *buf;
 };
 
-void FUN_0006e9bc(struct Rec *p, unsigned int n)
+void FUN_0006e9bc(struct Rec *p, int n)
 {
   p->count = n;
   p->items = FUN_000008d8(FUN_00000a90(n * 0x70 + 0x10), FUN_0005a8ec, FUN_0005aeac, 0x70, n);
@@ -44,3 +39,11 @@ void FUN_0006e9bc(struct Rec *p, unsigned int n)
 //    after the first call (then no copy is emitted at all), so the 5th argument
 //    has to be a register copy of n that survives the call to FUN_00000a90.
 // near miss from lane om1 (unreviewed)
+// lane pn4 (2026-11-10), still 7 words: also ruled out an inline NewItems(n)/NewArr(size,n)/Alloc(bytes) wrapper,
+// a `cnt` copy used only for the 5th argument (assigned at declaration, after the store, or with a `self = p` copy),
+// `(int)n` casts on the argument or the multiply, `short`/`unsigned long` count prototypes, and real C++
+// `new C[n]` (MWCC's own new[] adds a null test and EH: 48 words; symbols not kept).
+// lane pn4 (2026-11-10, later): int param + unsigned prototype = 6 words. Also ruled out with the int param: an
+// int count field (with an unsigned loop cast), explicit (unsigned) casts on the store / the 5th argument / the
+// multiply, an unsigned `cnt` local for the 5th argument (6-7 words).
+// improved by lane pn4 (unreviewed): 7 -> 6 differing words

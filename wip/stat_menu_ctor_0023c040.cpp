@@ -1,14 +1,6 @@
 /* HSTMATCH module=EBOOT.BIN start=0x0023c040 end=0x0023c2ac symbol=FUN_0023c040 lang=c++ */
 /* Hand-written reconstruction from the disassembly (Ghidra pseudocode ram-0x0023c040.c as a guide).
-// NEAR MISS: 155/155 words, 19 words differ, all in the final rect block (from +0x218).
-// Everything up to the virtual calls matches byte for byte. Retail keeps the source rect in v1,
-// the destination in v0 and the gfx pointer only transiently in a0; ours takes v0 for the gfx
-// pointer and a3 for the destination. Tried: every declaration/usage order of the three pointer
-// locals, float pair order (0x64/0x60 vs 0x60/0x64), the four short locals in pseudocode and in
-// 8/4/10/6 order, floats read through a local vs a re-dereferenced expression, destination as
-// int* vs byte offsets. All give 19-23 differing words with the same body. Remaining lever is
-// the local-vs-temporary register class MWCC picks for the destination pointer. */
-
+   NEAR MISS (lane pn4): 155/155 words, 9 differ, all in the final rect block (+0x244..+0x270). */
 struct Item {
   virtual void v0();
   virtual void v1();
@@ -29,6 +21,20 @@ struct Gfx {
   virtual void v6();
   virtual void v7();
   virtual void v8(int, int, int, int, int);
+  char pad[0x5c];
+  float x;
+  float y;
+};
+
+struct Area {
+  int pad;
+  int w;
+  int h;
+  int a;
+  int b;
+  int x;
+  int y;
+  void Set(short w_, short h_, int x_, int y_) { a = 0; b = 0; w = w_; h = h_; x = x_; y = y_; }
 };
 
 extern "C" {
@@ -96,20 +102,7 @@ int FUN_0023c040(int param_1)
   short *r = *(short **)(param_1 + 0xe8c);
   (*(Gfx **)(param_1 + 0x20))->v8(0, r[2], r[3], r[4], r[5]);
 
-  int *dst = *(int **)(param_1 + 0x14c0);
-  float f60 = *(float *)(*(int *)(param_1 + 0x20) + 0x60);
-  float f64 = *(float *)(*(int *)(param_1 + 0x20) + 0x64);
-  short *rc = *(short **)(param_1 + 0xdc4);
-  short h10 = rc[5];
-  short h6 = rc[3];
-  short h8 = rc[4];
-  short h4 = rc[2];
-  dst[3] = 0;
-  dst[4] = 0;
-  dst[5] = (int)f60;
-  dst[6] = (int)f64;
-  dst[1] = (short)(h8 - h4);
-  dst[2] = (short)(h10 - h6);
+  (*(Area **)(param_1 + 0x14c0))->Set((*(short **)(param_1 + 0xdc4))[4] - (*(short **)(param_1 + 0xdc4))[2], (*(short **)(param_1 + 0xdc4))[5] - (*(short **)(param_1 + 0xdc4))[3], (int)(*(Gfx **)(param_1 + 0x20))->x, (int)(*(Gfx **)(param_1 + 0x20))->y);
 
   short *rb = *(short **)(param_1 + 0xa04);
   *(int *)(param_1 + 0x174c) = (short)(rb[4] - rb[2]);
@@ -118,3 +111,12 @@ int FUN_0023c040(int param_1)
 }
 }
 // near miss from lane fm4 (unreviewed)
+// pn4: was 19 words. The rect block is an inline member `Area::Set(short w, short h, int x, int y)` called with
+// the three pointers re-read inline (no locals): that gives retail's gfx-in-a0 / rc-in-v1 / dst-in-v0 colouring and
+// load order (y +100 first). Body order a,b,w,h,x,y = 9 words; a,b,x,y,w,h (retail's store order) = 12.
+// Remaining: retail truncates x (f0) first and seh's w/h into fresh regs a2/a3, storing 12,16,20,24 then 4,8;
+// ours seh's in place and stores w/h before x/y.
+// Ruled out (all 12-23 words): locals for any subset of dst/g/rc (all 7 subsets), Set parameter orders
+// xywh/hwxy/whyx/yxhw/xyhw/hwyx, float params truncated inside, const float& params, Vec2 member by value/const&,
+// int params with (short) casts at the call, nested SetRect/SetSize inlines, two separate caller statements.
+// improved by lane pn4 (unreviewed): 19 -> 9 differing words

@@ -432,3 +432,4 @@ f_000ffb8c__13Elem_001054c0Fb = 0x000ffb8c;   # PTMF target stored by for_each_b
 DAT_002bcd70 = 0x002bcd70;   # string FindAdsr (agent) [lane dsn13]
 FUN_00071ed0 = 0x00071ed0;   # FUN_00072cec (agent) [lane dsn13]
 DAT_002bce98 = 0x002bce98;   # string GetWaveMarkerCount (agent) [lane dsn13]
+__ct__6TriKeyFRC6TriKey = 0x0004c5cc;   # src/eboot/prop_update_00227408.cpp (agent) [lane fe1]

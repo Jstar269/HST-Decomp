@@ -13,16 +13,16 @@
   {
    "id": "game-code",
    "title": "Game code matched",
-   "progress": 41.20946138339512,
-   "detail": "2,327,184 of 5,647,208 code bytes (115,872 B of Sony code kept out of this repository are not counted)",
+   "progress": 41.51786156982353,
+   "detail": "2,344,600 of 5,647,208 code bytes (115,872 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
   {
    "id": "all-code",
    "title": "All code matched",
-   "progress": 41.20946138339512,
-   "detail": "2,327,184 of 5,647,208 code bytes (242,480 B of Sony code kept out of this repository are not counted)",
+   "progress": 41.51786156982353,
+   "detail": "2,344,600 of 5,647,208 code bytes (242,480 B of Sony code kept out of this repository are not counted)",
    "reached": null,
    "regressed": false
   },
