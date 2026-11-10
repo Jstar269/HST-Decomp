@@ -1,35 +1,32 @@
-/* HSTMATCH module=hstp_trans_main.prx start=0x000ab204 end=0x000ab274 symbol=FUN_000ab204 lang=c99 */
-
-typedef struct {
+/* HSTMATCH module=hstp_trans_main.prx start=0x000ab204 end=0x000ab274 symbol=FUN_000ab204 lang=c++ */
+struct Ctx {
     char pad[0x24];
     float f24;
-} Ctx_000ab204;
-
-typedef struct {
+};
+struct Obj {
     char pad[4];
     float f4;
-} Obj_000ab204;
+};
 
-extern Ctx_000ab204 *FUN_000b6e80(void *);
+extern "C" Ctx *FUN_000b6e80(void *);
 
-int FUN_000ab204(void *param_1, Obj_000ab204 *param_2)
+extern "C" int FUN_000ab204(void *param_1, Obj *param_2)
 {
-    Ctx_000ab204 *ctx = FUN_000b6e80(param_1);
-    float limit = -(ctx->f24 * 0.01f);
-    if (!(param_2->f4 > limit)) {
-        return 0;
-    }
-    if (param_2->f4 < 0.0f) {
-        return 1;
+    Ctx *ctx = FUN_000b6e80(param_1);
+    if (param_2->f4 > -(ctx->f24 * 0.01f)) {
+        if (param_2->f4 < 0.0f) {
+            return 1;
+        }
     }
     return 0;
 }
 
-// NEAR MISS: 27/28 words (float band comparison family: 0x000ab204, twin 0x000ab60c; see MWCC-NOTES line 346).
-// Retail loads the compared member param_2->f4 into $f1 and the 0.01f constant into $f2,
-// then compares c.ngt.s $f1, $f0 followed by bc1tl with delay slot move v0, zero.
-// The second branch tests param_2->f4 < 0.0f producing the characteristic unfilled-slot tail:
-//   ab248: c.lt.s $f1, $f0
-//   ab250: bc1f 0xab260; nop; b 0xab264; li v0, 1; move v0, zero
-// MWCC allocates $f2 for param_2->f4 and $f1 for the constant (register swap), remaining 5-6 words off.
-// near miss from lane u1r2-3 (unreviewed)
+// NEAR MISS: 28/28 words, 5 differ (FPR numbering only: $f1 vs $f2). Reduced from 18 words (lane w3s1).
+// Structure, branches, constants and delay slots match retail 100% (bc1tl with delay slot move v0, zero,
+// and the unfilled-slot tail bc1f; nop; b; li v0, 1; move v0, zero).
+// Retail loads param_2->f4 into $f1 and the 0.01f constant into $f2 (mtc1 v0, $f2; mul.s $f0, $f2, $f0;
+// c.ngt.s $f1, $f0; c.lt.s $f1, $f0); ours loads param_2->f4 into $f2 and 0.01f into $f1.
+// Same FPR swap is present in twins 0x000ab60c and EBOOT 0x000a8810.
+// Ruled out: named local p, non-const scale local, inline check_band helper (both argument orders),
+// trivial getters on Ctx and Obj, mirrored compares, GCC SDK profiles, calling context getter inside condition.
+// improved by lane w3s1 (unreviewed): 18 -> 5 differing words

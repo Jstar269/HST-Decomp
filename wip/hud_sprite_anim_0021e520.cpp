@@ -54,6 +54,11 @@ extern const float DAT_002f08d0;
 void FUN_000ffb3c(void *, int);
 }
 
+inline unsigned int Rgba(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+    return r | (g << 8 | (a << 24 | b << 16));
+}
+
 inline int Curve(int k)
 {
     if (k < 16)
@@ -61,50 +66,54 @@ inline int Curve(int k)
     return 128;
 }
 
+
 extern "C" void FUN_0021e520(Hud *self)
 {
     self->anim.Update();
-    int n = self->frame;
-    float dur = DAT_002f087c;
-    self->frame = n + 1;
-    float t = self->frame;
-    if (t >= dur) {
+    self->frame++;
+    if (self->frame >= DAT_002f087c) {
         self->items[self->sel]->Show(1);
         FUN_000ffb3c(self->rows[self->sel].label, self->rank < 10);
         FUN_000ffb3c(self->rows[self->sel].value, 0);
     } else {
         int i = self->sel * 3;
+        float t = self->frame;
         int k = (int)(t * DAT_002f08cc);
         int fade = (int)(t * DAT_002f08d0);
         float scale = k < 16 ? DAT_002f088c[k] / 128.0f : 1.0f;
         float grow = -DAT_002f0880 + DAT_002f0880 * scale;
-        unsigned char c = Curve(k);
-        int ai = k < 16 ? DAT_002f088c[k] : 128; float a = ai;
+        int c0 = k < 16 ? DAT_002f088c[k] : 128;
+        int a = (int)(float)(k < 16 ? DAT_002f088c[k] : 128);
         float w = grow * 15.0f / 2.0f;
-        float h = grow * 19.0f / 2.0f;
         self->spr[i]->x0 = (short)(self->left[i] - w);
+        float h = grow * 19.0f / 2.0f;
         self->spr[i]->x1 = (short)(self->right[i] + w);
         self->spr[i]->y0 = (short)(self->top[i] - h);
         self->spr[i]->y1 = (short)(self->bottom[i] + h);
-        unsigned int col = c | (c << 8 | ((unsigned char)(int)a << 24 | c << 16));
+        unsigned int col = Rgba(c0, c0, c0, a);
         self->spr[i]->color = col;
+        float s = DAT_002f0884 * fade / DAT_002f087c;
         self->spr[i + 1]->x0 = (short)(self->left[i + 1] - w);
         self->spr[i + 1]->x1 = (short)(self->right[i + 1] + w);
         self->spr[i + 1]->y0 = (short)(self->top[i + 1] - h);
         self->spr[i + 1]->y1 = (short)(self->bottom[i + 1] + h);
         self->spr[i + 1]->color = col;
-        float s = DAT_002f0884 * fade / DAT_002f087c;
         w = s * 95.0f / 2.0f;
         h = s * 60.0f / 2.0f;
+        float alpha = DAT_002f0888 - DAT_002f0888 * fade / DAT_002f087c;
         self->spr[i + 2]->x0 = (short)(self->left[i + 2] - w);
         self->spr[i + 2]->x1 = (short)(self->right[i + 2] + w);
         self->spr[i + 2]->y0 = (short)(self->top[i + 2] - h);
         self->spr[i + 2]->y1 = (short)(self->bottom[i + 2] + h);
-        float alpha = DAT_002f0888 - DAT_002f0888 * fade / DAT_002f087c;
         self->spr[i + 2]->color = (self->spr[i + 2]->color & 0xffffff) | ((unsigned char)(unsigned int)alpha << 24);
     }
 }
-// NEAR 164: retail alpha ternary is beqzl/li a1,128 (ours beqz); register choice for k/fade/i differs;
-// retail schedules w=grow*15/2 before global loads, h after first store, early mul 19*grow;
-// color OR order and j=2 section order differ. ~16 compiles.
-// near miss from lane ol2 (unreviewed)
+// NEAR 121 (lane w4f1, was 164): integer registers and both branch shapes now match retail up to +0x138
+// (compare on self->frame directly with the int->float conversion CSE'd fixed the top; ai preassigned
+// with Rgba(u8,u8,u8,u8) gives the beqzl/andi placement). What differs: FP register colouring after
+// the third ternary (ours grow=f8, (float)ai cvt'd immediately into f6; retail grow=f6, cvt late into f5,
+// DAT_087c/0884/0888 in f7/f4/f3), which then reorders the whole sprite block schedule.
+// Ruled out: ternary vs if/else for ai, Curve() inline for the table reads, late/early (float)ai,
+// s/alpha computed at top or late, w2/h2 new locals, h before w, DAT globals read into locals (194+),
+// float fade local (165).
+// improved by lane w4f1 (unreviewed): 164 -> 121 differing words

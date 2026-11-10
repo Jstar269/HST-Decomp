@@ -430,3 +430,4 @@ DAT_003e95e0 = 0x003e95e0;   # hstclone twin11100306-hstp_trans_main.prx
 FUN_0002245c = 0x0002245c;   # hstclone twin11100306-hstp_trans_main.prx
 FUN_00022478 = 0x00022478;   # hstclone twin11100306-hstp_trans_main.prx
 FUN_00073690 = 0x00073690;   # hstclone twin11100306-hstp_trans_main.prx
+FUN_0001c73c = 0x0001c73c;   # hstclone c211507

@@ -12,9 +12,9 @@ the tiers progress is reported in, are defined in [`COMPLETION.md`](COMPLETION.m
   address names from Ghidra (`FUN_0011d894`), and types are provisional. Every note line says "names and types
   await human review" until a person has reviewed the source.
   <!-- hstprogress:begin guide-source-kinds -->
-- Of the 13,473 sources (measured 2026-11-10), 7,247 are address-substituted **clones** of another matched source
-  (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,871 are such
-  translations corrected by hand, 3,071 are hand-written, 136 are instances of container templates, and 85 are newlib
+- Of the 13,530 sources (measured 2026-11-10), 7,254 are address-substituted **clones** of another matched source
+  (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,872 are such
+  translations corrected by hand, 3,120 are hand-written, 136 are instances of container templates, and 85 are newlib
   library functions translated from newlib sources (37 more are clones of them, counted among the clones), and 10 have
   no known note kind.
 - 126 of the sources are newlib library functions compiled with Sony's `psp-gcc` kits; all others are game code
@@ -230,7 +230,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
   (`tools/hstsdkunits.py`: runs of non-game functions that contain an `ins $zero` function; the list is in the
   toolchain lock). Game code keeps mwccpsp.
   <!-- hstprogress:begin guide-profiles -->
-  Measured 2026-11-10, the public sources use `mwcc219` (13,347 sources), `gcc171-O2` (104 sources), `gcc171x-O2` (20
+  Measured 2026-11-10, the public sources use `mwcc219` (13,404 sources), `gcc171-O2` (104 sources), `gcc171x-O2` (20
   sources) and `gcc171x-O1` (2 sources).
   <!-- hstprogress:end -->
 - `rodata=0xADDR`, `data=`, `sdata=`, `bss=`, `sbss=`: where the object's sections go when the function refers to

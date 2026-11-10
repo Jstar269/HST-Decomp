@@ -24,7 +24,17 @@ void FUN_0001ce28();
 int FUN_0001100c(const void *, const char *, int);
 }
 
-#define WaitLoaded(n)                              if (DAT_002cfae4 == 3 || DAT_002cfae4 == 2) {         while (DAT_0030ebd0 < (n)) {                       FUN_002b78f0();                                FUN_002b7958(100);                         }                                          } else {                                           FUN_0001b918(DAT_002cfc04);                    for (;;) {                                     }                                          }
+#define WaitLoaded(n) \
+    { int mode = DAT_002cfae4; if (mode == 3 || mode == 2) { \
+        while (DAT_0030ebd0 < (n)) { \
+            FUN_002b78f0(); \
+            FUN_002b7958(100); \
+        } \
+    } else { \
+        FUN_0001b918(DAT_002cfc04); \
+        for (;;) { \
+        } \
+    } }
 
 static inline int Key(const unsigned char *p)
 {
@@ -45,7 +55,8 @@ extern "C" int FUN_0001c204(Archive *a, const char *name)
         int size = t->b;
         if (size == 0)
             size = t->a;
-        WaitLoaded(hdr + size)
+        hdr += size;
+        WaitLoaded(hdr)
         FUN_0001cf14(a->table, a->data + a->count * 8 + 8, FUN_0001ce28);
     }
     if (a->idx < 0)
@@ -78,9 +89,12 @@ extern "C" int FUN_0001c204(Archive *a, const char *name)
     }
     return -1;
 }
-// NEAR (156 words by position; 211/215 words): control flow matches. Still different:
-// (1) saved registers: retail gives i/p s0/s1, name s2, a s3, key s4, len s5, and loads the mode into a1;
-// (2) the size lookup: retail computes q=t+8 first and leaves 'bnez; nop' unfilled;
-// (3) the third wait: retail adds hdr+size inside the taken branch, ours hoists it into the beql delay slot;
-// (4) retail masks len again ('andi s5,s5,0xff') before the search loop.
-// near miss from lane ol3 (unreviewed)
+// NEAR (lane w4f1, 153 words differ by position; 212/215 words). Control flow matches.
+// Remaining: (1) saved registers: retail i/hdr s0, p s1, name s2, a s3, key s4, len s5; ours numbers them in
+//     definition order (name s0, a s1, hdr s2, len s3, ...). Not moved by: locals declared at the top in any
+//     order, copying both params into locals, uchar len, a Hash() inline, a Load() inline.
+// (2) retail reads the mode global into a1 in all three waits (ours v1/a0); a block-local `int mode` and a
+//     switch (case 2: case 3:) did not help (switch is worse, 201).
+// (3) size lookup: retail computes t = base + 8 before `lw t->b` and leaves `bnez; nop`.
+// (4) `hdr += size; WaitLoaded(hdr)` (this file) is 3 words better than WaitLoaded(hdr + size).
+// improved by lane w4f1 (unreviewed): 156 -> 153 differing words

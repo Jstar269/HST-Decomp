@@ -32,7 +32,7 @@ extern "C" {
     void FUN_00022518(Vec4 *out, const Vec4 *in);
     void FUN_00055240(Matrix44 *out, void *obj, int entry_val);
     void FUN_00022498(float scale, Vec4 *out, const Vec4 *in);
-    void FUN_00022418(Vec4 *out, const Vec4 *in, const Vec4 &pos);
+    void FUN_00022418(Vec4 *out, const Vec4 *in, const Vec4 *pos);
     void FUN_000ce754(float p1, float p2, float p3, void *obj, const Matrix44 *mat, int zero, int one);
 }
 
@@ -47,7 +47,9 @@ extern "C" void FUN_000c8708(char *param_1, int param_2) {
     Vec4 scaled_dir;
     Vec4 norm_dir;
 
-    void *a0_obj = *(void **)(*(char **)(*(char **)((int)(param_2 * 4) + (int)DAT_003386b0 + 0x70) + 0x5bc) + 0x58);
+    int boff = param_2 * 4;
+    char *tab = (char *)(boff + (int)DAT_003386b0);
+    void *a0_obj = *(void **)(*(char **)(*(char **)(tab + 0x70) + 0x5bc) + 0x58);
 
     mat.m[0] = DAT_002bc410;
     mat.m[1] = DAT_002bc414;
@@ -81,16 +83,19 @@ extern "C" void FUN_000c8708(char *param_1, int param_2) {
 
     FUN_00022518(&norm_dir, &dir);
 
-    dir.w = -0.0f;
+    float zero = 0.0f;
+    dir.w = -zero;
     dir.x = -norm_dir.x;
     dir.y = -norm_dir.y;
     dir.z = -norm_dir.z;
     *(int *)&norm_dir.w = 0;
 
-    int entry_val = *(int *)((int)(param_2 * 36) + (int)param_1 + 0xd8);
+    int eoff = param_2 * 36;
+    int entry_val = *(int *)((char *)(eoff + (int)param_1) + 0xd8);
     FUN_00055240(&bone_mat, a0_obj, entry_val);
 
-    const Vec4 &bone_pos = bone_mat.row[3];
+    Vec4 *bone_pos = (Vec4 *)(int)bone_mat.m;
+    bone_pos += 3;
     FUN_00022498(0.14999999f, &scaled_dir, &dir);
 
     scaled_dir2 = scaled_dir;
@@ -102,3 +107,13 @@ extern "C" void FUN_000c8708(char *param_1, int param_2) {
     FUN_000ce754(3500.0f, 1.0f, 0.0f, snd_obj, &mat, 0, 1);
 }
 // near miss from lane ag4 (unreviewed)
+// Near miss re-worked by lane w3f3: 33/153 words differ, all in one contiguous block from
+// the FUN_00022498 call to the tail. Fixes that landed: (1) split the indexed global read so
+// the addu is offset+base, (2) entry_val offset+base, (3) `dir.w = -zero;` with a local
+// `float zero = 0.0f;` reproduces retail's mtc1 zero/neg.s instead of a 0x80000000 constant,
+// (4) Vec4* third arg of FUN_00022418. Remaining: retail materialises &bone_mat.row[3]
+// (sp+128) in the FUN_00022498 jal delay slot into s0 and uses `move a2,s0`; ours computes
+// it after the scaled_dir2 copy (v0 base + 48). Tried: plain pointer local before/after the
+// call, direct &bone_mat.row[3], bone_mat.row+3, reference param (all 42 diffs), int-cast
+// (33). The delay-slot placement of the addiu is the last open item.
+// improved by lane w3f3 (unreviewed): 67 -> 33 differing words

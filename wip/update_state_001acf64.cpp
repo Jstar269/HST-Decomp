@@ -109,10 +109,10 @@ void FUN_001acf64(Self_001acf64 *self, bool flag)
 
     int i4, off4;
     for (i4 = 0, off4 = 0; i4 < 6; i4++, off4 += 20) {
-        int *h_s2 = (int *)((char *)self + (off4 + 1000)) + 9;
+        int cur = s8 + i4;
         int *h_s1 = (int *)((char *)self + (off4 + 760)) + 9;
         int *h_s0 = (int *)((char *)self + (off4 + 880)) + 9;
-        int cur = s8 + i4;
+        int *h_s2 = (int *)((char *)self + (off4 + 1000)) + 9;
         if (cur < FUN_0019d474()->f37c) {
             int idx2 = FUN_001a49dc(FUN_0019d474(), cur);
             int clamped2 = Clamp(idx2 - 1, DAT_002e2108, DAT_002e210c);
@@ -165,4 +165,10 @@ void FUN_001acf64(Self_001acf64 *self, bool flag)
 // 2. Declaring variables at the function level disrupts i4/off4 register allocation from s4/s3 to s3/s2.
 // 3. Reusing variables explicitly between loops 2/3 and 4 caused type cast overheads.
 // 4. Post-loop flag condition requires `bool ok = FUN_0019d474()->f37c > s8 + 6; if (!ok)` to match retail's `slt v0, v1, v0; bnezl v0, 0x1ad2f8` sequence with fallthrough 1 and branch 0.
-// near miss from lane dsn5 (unreviewed)
+// near miss re-tested by lane w3f3: declaration order h_s1,h_s0,h_s2,cur inside the
+// last loop lowers the residual from 24 to 21 words; residual is the loop-4 saved-register
+// colouring only (retail h_s2=s2,h_s1=s1,h_s0=s0,cur=s7,clamped2=s6; ours h_s1=s1,h_s0=s0,
+// h_s2=s6,cur=s2,clamped2=s7). Ruled out: all 24 orderings of the three pointers+cur
+// (best 21), moving cur/clamped2 to function scope (33), declaring cur before the pointers
+// (23-24). Root cause is the allocator keeping s2 for cur instead of h_s2.
+// improved by lane w3f3 (unreviewed): 24 -> 21 differing words
