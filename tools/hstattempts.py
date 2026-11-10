@@ -13,8 +13,13 @@ writes try/attempts.json, one row per function that has ANY record, with a singl
              row key "lane_only")
   blocked    listed in data/blocked_functions.json (a proven dead end with the available toolchain); wins over every
              lane result except an installed source
-  near       a wip/ file exists, or the newest lane line is NEAR; "words_left" comes from the last measurement
+  near       a wip/ file exists, or the newest lane line is NEAR, and it is within NEAR_WORDS_MAX (20) differing
+             words of retail or not measured yet; "words_left" comes from the last measurement
              (try/nearmiss-report.json, written by tools/hstnearmiss.py) or from the lane line when it names a count
+  draft      a wip/ file or lane NEAR line that is further away than that, or a wip/ file that does not reach the
+             comparison (it does not compile or link). A draft is a hint for fresh work, not a near miss: hstqueue
+             offers the function in the fresh tier and names the file (2026-11-09: 605 of the 702 "near misses" of
+             EBOOT.BIN were such drafts, with a median of 87 % of their words differing)
   skip       the newest lane line is SKIP; "reason" is the lane's text
   untouched  queued in a batch that produced no result for it: either the lane is finished, kept a PROGRESS.md and
              never reached the function ("evidence": "lane-unreached", safe to offer again), or the batch has no
@@ -55,7 +60,9 @@ BLOCKED_PATH = ROOT / "data" / "blocked_functions.json"
 QUEUE_DIR = ROOT / "try" / "agent-queue"
 ATTEMPTS_PATH = ROOT / "try" / "attempts.json"
 NEARMISS_REPORT = ROOT / "try" / "nearmiss-report.json"
-STATUSES = ("exact", "near", "skip", "untouched", "blocked")
+STATUSES = ("exact", "near", "draft", "skip", "untouched", "blocked")
+NEAR_WORDS_MAX = 20     # more differing words than this, and the file is a draft, not a near miss
+UNBUILDABLE_CLASSES = ("tool_state",)   # hstnearmiss classes of a file that does not reach the comparison
 BLOCKED_SCHEMA = "hst-decomp.blocked-functions.v1"
 MODULES = ("EBOOT.BIN", "hstp_trans_main.prx")
 
@@ -416,11 +423,23 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
                 row["words_left"] = lane_rec.words_left
                 row["words_left_source"] = "lane line"
             row["wip_files"] = [w["path"] for w in wip_rows]
+            rows_measured = [measured[w["path"]] for w in wip_rows if w["path"] in measured]
+            if row["words_left"] is not None and row["words_left"] > NEAR_WORDS_MAX:
+                row.update(status="draft", evidence="main-tree-far")
+            elif (row["words_left"] is None and rows_measured and len(rows_measured) == len(wip_rows)
+                  and all(m.get("class_if_live", m.get("class")) in UNBUILDABLE_CLASSES for m in rows_measured)):
+                row.update(status="draft", evidence="main-tree-unbuildable")   # every file fails before the comparison
+            if row["status"] == "draft":
+                words = next((m["words"] for m in rows_measured if m.get("words")), None)
+                if words:
+                    row["words"] = words
         elif lane_rec is not None:
             if lane_rec.status == "EXACT":
                 row.update(status="exact", src=lane_rec.src, evidence="lane-progress", lane_only=True)
             elif lane_rec.status == "NEAR":
-                row.update(status="near", wip=lane_rec.wip, words_left=lane_rec.words_left, evidence="lane-progress",
+                far = lane_rec.words_left is not None and lane_rec.words_left > NEAR_WORDS_MAX
+                row.update(status="draft" if far else "near", wip=lane_rec.wip, words_left=lane_rec.words_left,
+                           evidence="lane-progress-far" if far else "lane-progress",
                            reason=lane_rec.detail, words_left_source="lane line" if lane_rec.words_left is not None else "")
             elif re.search(r"\bnot attempted\b", lane_rec.detail, re.I):
                 # a budget skip (fm11, 2026-10-24: "not attempted: lane session budget was spent ..."): the lane never

@@ -34,7 +34,7 @@ void FUN_002a1a64(Menu *self, int v)
   case 0x18:
     self->f1e4 = 1;
     self->f1e5 = 0;
-    FUN_002a165c(self);
+    FUN_002a165c(self, 5);
     self->f1e0 = 13;
     FUN_002a1398(self, 1, 13);
     FUN_00058ddc(self, 1, 1);
@@ -109,3 +109,7 @@ void FUN_002a1a64(Menu *self, int v)
 // Lessons applied: FUN_00057bc0 is (Menu *, int, int, float, float, float) (int args evaluated before f13/f14);
 // FUN_002a165c(self, 1) in the 0x17/0x19/0x21 arm shares the constant 1 with the store (retail uses a1).
 // near miss from lane sn3 (unreviewed)
+// opus1 2026-11-09 (10 -> 8): case 0x18 calls FUN_002a165c(self, 5): retail's `li a1,5` before the f1f8 store is the
+// constant shared with that call's dropped 2nd argument (a1 is never set in the 0x18 arm). Left: the dispatch temps
+// (retail index v1 / table a0, ours v0 / v1); `FUN_002a165c(self, self->f1f8)` 184.
+// improved by lane opus1 (unreviewed): 10 -> 8 differing words

@@ -18,12 +18,17 @@ extern void FUN_00064418(Vec4 *, char *);
 extern Vec4 FUN_0004c898(const Vec4 *);
 extern void FUN_00051d40(uint, int);
 
-void FUN_000648f4(char *self, int count, float param_2)
+void FUN_000648f4(char *param_1, int param_3, float param_2)
 {
+  unsigned int self;
+  unsigned int count;
   Vec4 transformed;
   UInt4 identity;
   Vec4 input;
   Vec4 *source;
+
+  count = (unsigned int)param_3;
+  self = (unsigned int)param_1;
 
   identity.w = 0x3f800000;
   identity.x = 0;
@@ -33,7 +38,7 @@ void FUN_000648f4(char *self, int count, float param_2)
   if (FUN_000648d0() != 0) {
     source = (Vec4 *)&identity;
   } else {
-    FUN_00064418(&input, self);
+    FUN_00064418(&input, (char *)self);
     source = &input;
   }
   transformed = FUN_0004c898(source);
@@ -48,8 +53,8 @@ void FUN_000648f4(char *self, int count, float param_2)
   *(uint *)(self + 0x38) = 0;
   *(uint *)(self + 0x3c) = 0;
 
-  *(float *)(self + 8) = (float)count;
-  *(float *)(self + 0xc) = (float)count;
+  *(float *)(self + 8) = (float)(int)count;
+  *(float *)(self + 0xc) = (float)(int)count;
   *(uint *)(self + 0x10) = 0xbf800000;
 
   FUN_00051d40(*(uint *)(self + 4), 0);
@@ -64,3 +69,12 @@ void FUN_000648f4(char *self, int count, float param_2)
   *(float *)(self + 0x54) = param_2;
 }
 // near miss from lane ag6 (unreviewed)
+// lane pn3 (2026-11-10, ~6 compiles here plus ~38 on the identical-shape Sharing 0x647e0): 3 -> 2 words. The two
+// int params are copied into `unsigned` locals assigned count-then-self (declared self-then-count): MWCC copies
+// locals in ASSIGNMENT order and colours them by DECLARATION order (first = s1), which gives retail's s1=self,
+// s0=count and the a1-before-a0 order; the float param copy (`mov.s $f20,$f12`) is a parameter-phase copy and
+// always lands FIRST (retail: between the two int copies). A float local assigned between them is coalesced with
+// the param. The other way round (count left a parameter, self a converted local, as in the EXACT sibling
+// src/sharing_main/setup_transform_000649e4.c) gives retail's order but param count=s1/self=s0 (24 words): params
+// always colour above locals. See wip/setup_transform_000647e0.c for the full ruled-out list.
+// improved by lane pn3 (unreviewed): 3 -> 2 differing words

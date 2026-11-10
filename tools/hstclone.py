@@ -224,6 +224,9 @@ def main() -> int:
     ap.add_argument("--parallel", type=int, default=12)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-per-target", type=int, default=3, help="distinct exemplar texts tried per clone")
+    ap.add_argument("--public-only", action="store_true",
+                    help="only publishable clones (owner decision 2026-11-10): skip exemplars of the origin classes "
+                         "tools/hstpublish.py keeps private and targets inside the SGX block")
     args = ap.parse_args()
     source_module = args.from_module or args.module
     same_module = source_module == args.module
@@ -237,6 +240,14 @@ def main() -> int:
             sources[h["module"]][h["start"]] = p
     exemplars: dict[int, Path] = sources[source_module]
     matched_targets = set(sources[args.module])
+    if args.public_only:
+        import hstorigin
+        import hstpublish
+        classes, _warnings = hstorigin.classify()
+        exemplars = {s: p for s, p in exemplars.items()
+                     if classes.get(p.relative_to(M.ROOT).as_posix()) not in hstpublish.EXCLUDED_CLASSES}
+        lo, hi = hstorigin.SGX_BLOCKS.get(args.module, (0, 0))
+        functions = {s: v for s, v in functions.items() if not lo <= s < hi}
     by_sig = defaultdict(list)
     for start, (end, (sig, refs)) in functions.items():
         by_sig[sig].append(start)

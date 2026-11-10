@@ -429,3 +429,6 @@ FUN_0001ca58 = 0x0001ca58;   # via lane dsn8 [lane dsn8]
 FUN_0001cb88 = 0x0001cb88;   # via lane dsn8 [lane dsn8]
 __vt__10C_001554d0 = 0x00308694;   # src/eboot/cmd_factory_001554d0.cpp (hst-decomp-b clone)
 f_000ffb8c__13Elem_001054c0Fb = 0x000ffb8c;   # PTMF target stored by for_each_bind2nd_00101ce8.cpp (hst-decomp-b)
+DAT_002bcd70 = 0x002bcd70;   # string FindAdsr (agent) [lane dsn13]
+FUN_00071ed0 = 0x00071ed0;   # FUN_00072cec (agent) [lane dsn13]
+DAT_002bce98 = 0x002bce98;   # string GetWaveMarkerCount (agent) [lane dsn13]

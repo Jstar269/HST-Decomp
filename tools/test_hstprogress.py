@@ -20,6 +20,26 @@ def figures() -> dict:
             "near_misses": 3, "sources": 10}
 
 
+class PublishableScopeTests(unittest.TestCase):
+    """known_private: only what is known private leaves the publishable denominator (owner decision 2026-11-10)."""
+    SGX = (0x1000, 0x2000)
+    SPANS = ([0x3000], [0x3100])      # one private multi-function source covering 0x3000..0x3100
+
+    def private(self, start: int, end: int, hit: bool = False, starts: set[int] | None = None) -> bool:
+        return P.known_private(start, end, hit, self.SGX, starts or set(), self.SPANS)
+
+    def test_sgx_block_and_private_sources_are_private(self) -> None:
+        self.assertTrue(self.private(0x1800, 0x1810))
+        self.assertTrue(self.private(0x3040, 0x3080))
+        self.assertTrue(self.private(0x5000, 0x5010, starts={0x5000}))
+
+    def test_a_public_source_wins_and_unattributed_code_stays_publishable(self) -> None:
+        self.assertFalse(self.private(0x1800, 0x1810, hit=True))     # e.g. a newlib source inside the block
+        self.assertFalse(self.private(0x4000, 0x4040))               # nothing covers it yet: counted publishable
+        self.assertFalse(self.private(0x2000, 0x2010))               # the block's end is exclusive
+        self.assertFalse(P.known_private(0x1800, 0x1810, False, None, set(), ([], [])))
+
+
 class LadderTests(unittest.TestCase):
     def test_t2_comes_only_from_build_reports_and_only_for_the_chosen_sources(self) -> None:
         reports = {"EBOOT.BIN": {"module": "EBOOT.BIN", "t2_source_bytes": {"src/a.c": 100, "src/b.c": 50}}}

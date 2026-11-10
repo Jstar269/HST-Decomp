@@ -165,8 +165,8 @@ extern "C" void FUN_001a1754(Rec *p, int key)
         c2a = 4;
         break;
     }
+    bool found = false;
     if ((short)idx == 0) {
-        bool found = false;
         Base *base = FUN_0023bc78();
         for (int i = 0; i < FUN_00290228(DAT_003f3b1c); i++) {
             int id = FUN_00290230(DAT_003f3b1c, i);
@@ -298,3 +298,14 @@ extern "C" void FUN_001a1754(Rec *p, int key)
 // The `*(Entry *volatile *)&pNpc` last arguments reproduce retail's reload of the local after the nested
 // calls (a plain pNpc1/pNpc2 is CSE'd into s0; tried local copy, reference, Ref wrapper, array, struct
 // by value (lwc1 copy), split statements (moves mode*3 after the call), inline name helper, real asserts).
+// lane pn3 (2026-11-10, ~30 compiles): 4 -> 2 words. `bool found = false;` declared BEFORE the outer
+// `if ((short)idx == 0)` (the EBOOT twin 0x194f44's best form) makes the outer branch plain and the inner
+// `bnezl s7,join+4; lh v1,36(s4)` match retail; the residual 2 words are `move s7,zero` hoisted into the outer
+// branch's delay slot (retail: nop there, `move s7,zero` in the `jal FUN_0023bc78` slot). Rule seen: the outer
+// branch takes the likely copy whenever its slot is not filled from above. Ruled out here: found=true before
+// the if + found=false inside + `if (!found)` after the if (8: outer not threaded through the known true),
+// `bool found = (short)idx != 0;` (3 / 671), else { found = true; } (2, same), redundant found=false inside
+// (4 / 666), `for (..; !found && i < n; ..)` / while(!found) / `idx = found ? idx : 1` (600+), short /
+// unsigned short idx (5/7), empty statements after the if (empty inline call, if(0), do{}while(0), dead local:
+// all 4), while/for(;cond;){..break;} wrappers (671), found before c2a (9) or at function top (696).
+// improved by lane pn3 (unreviewed): 4 -> 2 differing words

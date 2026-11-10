@@ -41,11 +41,12 @@ their owners, are shown only to identify the game, and are not covered by this p
 
 | | Progress | What it counts |
 |---|---|---|
-| **Code matched** (T1) | **39.5%** | 2,274,780 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
-| **Functions matched** (T1) | **68.2%** | 13,397 of the 19,634 game functions. |
+| **Code matched** (T1) | **40.4%** | 2,327,184 of the 5,763,080 code bytes of the game's functions come from C or C++ that compiles, function by function, to the game's exact bytes. |
+| **Functions matched** (T1) | **68.5%** | 13,444 of the 19,634 game functions. |
+| **Publishable code matched** (T1) | **42.4%** | 2,327,184 of the 5,490,116 code bytes this repository can carry: the game's functions without the Sony SDK and middleware code known so far (that code comes from the player's own copy). |
 | **Built from source** (T2) | **30.9%** | The share of the game's program files that the whole build reproduces, byte for byte, from this source. |
 
-Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-07 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger; built from source by the whole-module build of 2026-11-02.
+Code and functions matched are the figures the trackers ([bytematch.dev](https://bytematch.dev/Jstar269/hst-decomp), [recomp.fyi](https://recomp.fyi)) show. The project's own finish line is stricter: the whole build must also work when moved to another address, and every source must be reviewed by a person. That figure is 0.0%. Measured 2026-11-10 from the maintainer's private ledger of accepted proofs by `tools/hstprogress.py`, which needs that ledger; built from source by the whole-module build of 2026-11-02.
 
 <!-- hstprogress:end -->
 
@@ -81,14 +82,14 @@ output of the game to web tools such as decomp.me, pastebins or public issues.
 
 <!-- hstprogress:begin readme-progress -->
 
-**13,394 exact sources** (13,397 functions) and 1,281 near misses, measured 2026-11-07 with `python tools/hstcov.py`
+**13,441 exact sources** (13,444 functions) and 1,289 near misses, measured 2026-11-10 with `python tools/hstcov.py`
 and counted in code bytes:
 
 | Module | Matched / functions | Matched / code bytes | Share of bytes |
 |---|---|---|---|
-| `EBOOT.BIN` | 6,739 / 9,804 | 1,161,024 / 2,849,076 | 40.751 % |
-| `hstp_trans_main.prx` (Sharing Version) | 6,658 / 9,830 | 1,113,756 / 2,914,004 | 38.221 % |
-| **Both** | 13,397 / 19,634 | 2,274,780 / 5,763,080 | 39.472 % |
+| `EBOOT.BIN` | 6,766 / 9,804 | 1,191,036 / 2,849,076 | 41.804 % |
+| `hstp_trans_main.prx` (Sharing Version) | 6,678 / 9,830 | 1,136,148 / 2,914,004 | 38.989 % |
+| **Both** | 13,444 / 19,634 | 2,327,184 / 5,763,080 | 40.381 % |
 
 <!-- hstprogress:end -->
 

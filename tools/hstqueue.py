@@ -2,7 +2,7 @@
 """Build hand-matching batches for matching agents.
 
     python tools/hstqueue.py --name fam1 [--module EBOOT.BIN] [--kind families|singles] [--per-batch 8]
-                             [--max-size 1600] [--min-size 64] [--batches 4] [--exclude 0xb49ec,...]
+                             [--max-size N] [--min-size 64] [--batches 4] [--exclude 0xb49ec,...]
                              [--execution-rank try/execution-rank.json]
                              [--near first|off|only] [--near-max-left N] [--near-max-size N] [--lever body,structure,...]
                              [--include-skipped] [--include-unrecorded]
@@ -16,10 +16,13 @@ functions that are not in any family, smallest alignment distance first when a g
 What is offered is decided by the attempt ledger (tools/hstattempts.py, which reads every lane's PROGRESS.md, the
 earlier batches, src/, wip/ and data/blocked_functions.json), in this order of tiers:
 
-  near        a near miss (wip/ file or lane NEAR line), ranked by code bytes unlocked per word left (a family
-              or Sharing twin multiplies the bytes); the item carries "wip" and "words_left"
+  near        a near miss (wip/ file or lane NEAR line within 20 differing words, hstattempts.NEAR_WORDS_MAX),
+              ranked by code bytes unlocked per word left (a family or Sharing twin multiplies the bytes); the item
+              carries "wip" and "words_left"
   untouched   queued by a lane that kept a PROGRESS.md but never reached the function: offered again
-  fresh       never queued
+  fresh       never queued, or only a far draft exists (hstattempts status "draft": a wip/ file more than 20 words
+              from retail, or one that does not build). Such an item says so: "draft" names the file, with
+              "draft_words_left" and "draft_words", as a hint for writing the function again, not as a seed to permute
   skipped     a lane SKIP, only with --include-skipped
   unrecorded  queued by a batch with no per-function record (an attempt cannot be ruled out), only with
               --include-unrecorded
@@ -31,6 +34,10 @@ misses out, --near only offers nothing else, --near-max-left N drops near misses
 unmeasured ones). Within a tier the order is the old one (twins first, then the generated-candidate distance; with
 --execution-rank, observed entry-weighted functions lead); --fresh-order bytes ranks the fresh tier by code bytes
 unlocked instead. --dry-run prints the plan and writes nothing.
+
+Size. There is no upper size limit unless --max-size is given (until 2026-11-09 the default was 1600 and the lanes
+passed 4000, so the 63 game functions of 4 KB or more, a quarter of the unmatched bytes, were never offered). Give
+each lane the size band it is meant for with --min-size and --max-size.
 
 --public-first ranks by compiler family (tools/hstfamily.py, a classifier whose accuracy is reported in its
 docstring and by `hstfamily.py evaluate`): inside each tier the functions predicted to be Metrowerks code (the part of
@@ -173,7 +180,8 @@ def offer_tier(members: list[dict | None], *, exact: bool = False, near_mode: st
         return None
     if any(m and m.get("reserved_by") for m in members):
         return None
-    states = [m["status"] if m else "fresh" for m in members]
+    # a far draft is fresh work: its file is a hint, not a near miss
+    states = [("fresh" if m["status"] == "draft" else m["status"]) if m else "fresh" for m in members]
     if any(state in ("exact", "blocked") for state in states):
         return None
     if "near" in states or (twin_near and "skip" not in states):
@@ -255,7 +263,7 @@ def main() -> int:
     ap.add_argument("--per-batch", type=int, default=8)
     ap.add_argument("--batches", type=int, default=4)
     ap.add_argument("--min-size", type=int, default=64)
-    ap.add_argument("--max-size", type=int, default=1600)
+    ap.add_argument("--max-size", type=int, default=None, help="largest function offered, in bytes (default: no limit)")
     ap.add_argument("--min-start", type=lambda s: int(s, 0), default=0x88000)
     ap.add_argument("--exclude", default="", help="comma-separated addresses (and their families) to skip")
     ap.add_argument("--execution-rank", type=Path, default=None,
@@ -362,7 +370,7 @@ def main() -> int:
                      and (args.near_max_left is None or (t["words_left"] is not None and t["words_left"] <= args.near_max_left))]
         is_near = any(m and m["status"] == "near" for m in members) or bool(twin_rows)
         limit = args.near_max_size if (is_near and args.near_max_size is not None) else args.max_size
-        if not args.min_size <= size <= limit:
+        if size < args.min_size or (limit is not None and size > limit):
             continue
         if args.near_max_left is not None and any(m and m["status"] == "near" and (
                 m["words_left"] is None or m["words_left"] > args.near_max_left) for m in members):
@@ -375,7 +383,7 @@ def main() -> int:
             if covered:
                 withheld["exact"] += 1
             else:
-                label = next((m["status"] for m in members if m and m["status"] in ("blocked", "near", "skip", "untouched")), "other")
+                label = next((m["status"] for m in members if m and m["status"] in ("blocked", "near", "draft", "skip", "untouched")), "other")
                 withheld[label] += 1
             continue
         n_twins = len(twin_functions)
@@ -396,8 +404,9 @@ def main() -> int:
         if not near_rows and twin_rows:                 # a near miss only in the other module
             near_rows = twin_rows
             words_left = min((t["words_left"] for t in twin_rows if t["words_left"] is not None), default=None)
-        previous = next((m for m in members if m and m["status"] in ("near", "skip", "untouched")), None)
-        extra = {"tier": tier, "family_p": fp, "unlocked_bytes": size * (len(starts) + n_twins),
+        previous = next((m for m in members if m and m["status"] in ("near", "draft", "skip", "untouched")), None)
+        draft = next((m for m in members if m and m["status"] == "draft"), None)
+        extra = {"tier": tier, "family_p": fp, "unlocked_bytes": size * (len(starts) + n_twins), "draft": draft,
                  "words_left": words_left, "wip": near_rows[0]["wip"] if near_rows else None, "previous": previous,
                  "twin_near": None if any(m and m["status"] == "near" for m in members) or not twin_rows else twin_rows[0]}
         extra["near_yield"] = near_yield(extra["unlocked_bytes"], words_left)
@@ -432,7 +441,9 @@ def main() -> int:
         rows = kept
     rows.sort(key=lambda row: queue_sort_key(row, args.execution_rank is not None, args.fresh_order == "bytes", args.public_first))
     tiers = {name: sum(1 for r in rows if r["tier"] == i) for i, name in enumerate(TIER_NAMES)}
+    n_drafts = sum(1 for r in rows if r.get("draft"))
     print(f"offerable {args.kind}: " + ", ".join(f"{n} {name}" for name, n in tiers.items() if n)
+          + (f" ({n_drafts} of them have a far draft)" if n_drafts else "")
           + (f"; withheld: {dict(withheld)}" if withheld else ""))
     if args.lanes:
         batches = deal_lanes(rows, args.lanes, args.lane_size,
@@ -449,7 +460,8 @@ def main() -> int:
                 s0 = row["starts"][0]
                 print(f"  {batch_names[n]} {TIER_NAMES[row['tier']]:<10} 0x{s0:08x} {row['tie_size']:5d} B"
                       f"{' words_left=' + str(row['words_left']) if row['words_left'] is not None else ''}"
-                      f"{' ' + row['wip'] if row['wip'] else ''}")
+                      f"{' ' + row['wip'] if row['wip'] else ''}"
+                      + (f" draft={row['draft']['wip']} ({row['draft']['words_left']} words off)" if row.get("draft") else ""))
         return 0
     for n, batch in enumerate(batches):
         items = []
@@ -477,8 +489,16 @@ def main() -> int:
                 t = row["twin_near"]
                 item["twin_near_miss"] = {"module": other_name, "address": t["start"], "wip": t["wip"],
                                           "words_left": t["words_left"], **lever_fields(near_info.get(t["wip"]))}
+            if row.get("draft"):
+                d = row["draft"]
+                item["draft"] = d["wip"]
+                item["draft_words_left"] = d["words_left"]
+                if d.get("words"):
+                    item["draft_words"] = d["words"]
+                item["draft_note"] = ("far draft: a hint for the types, calls and constants only; write the function "
+                                      "again from the disassembly instead of permuting this file")
             prev = row["previous"]
-            if prev and prev["status"] in ("skip", "near", "untouched"):
+            if prev and prev["status"] in ("skip", "near", "draft", "untouched"):
                 item["previous_attempt"] = {"status": prev["status"], "lanes": prev["lanes"],
                                             "reason": prev["reason"] or prev["evidence"]}
             if args.execution_rank:

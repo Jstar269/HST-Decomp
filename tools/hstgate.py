@@ -16,6 +16,9 @@ instruction pasted as text is the thing to find):
                     __declspec(section ".text...") or #pragma section/segment naming .text
   binary-include    #include of a file that is not a header (.bin .inc .s .S .o .dat ...)
   extra-header      an `extra=` key in the HSTMATCH header of a source under src/ (experimental flags never count)
+  gcc404x-outside-sdk  a `cc=gcc404x-*` header (psp-gcc-4.0.4x, the SDK-only profile; owner decision 2026-11-09)
+                    whose function [start, end) is not inside one of the Sony SDK units of data/sdk-gcc4-units.json
+                    (tools/hstsdkunits.py): game code keeps mwccpsp
 
 Tagged but allowed:
 
@@ -35,8 +38,19 @@ Tagged but allowed:
                          `.set push|pop|noreorder|reorder|nomacro|macro` (the SDK's VFPU blocks are wrapped in
                          `.set push; .set noreorder ... .set pop`, which is why retail keeps a `nop` after them in a
                          return's delay slot). Anything else stays asm-emit (refused).
+  steer-pragma           project rule (owner decision 2026-11-09): an optimiser-pass switch (STEER_PRAGMAS:
+                         opt_lifetimes, opt_dead_assignments, opt_propagation, ...) that the compiler documents,
+                         set for the one function it makes byte-identical. It must be scoped (`#pragma push` /
+                         `#pragma <name> off` before the function, `#pragma pop` after it, or a later
+                         `#pragma <name> reset`) and declared in a comment, `steer=pragma:<name>`, so
+                         tools/hststeer.py lists and counts every such source. Use it only when no natural source
+                         matches; when one pragma explains several functions of a translation unit it becomes that
+                         unit's setting instead.
 
-Reported only (a warning): pragma-unknown, a #pragma that is not on the list of the compiler controls this project uses.
+Reported only (a warning): pragma-unknown, a #pragma that is not on the list of the compiler controls this project uses;
+steer-pragma-unscoped and steer-pragma-undeclared, a steering pragma that is not the idiom (accepted proofs from before
+2026-11-09 carry such pragmas unnamed, so the gate does not refuse them; tools/hstlane.py harvest refuses a new source
+for either, new_source_refusals()).
 Every refusal and idiom is a finding with a line number; `refusals(findings)` is what the callers act on.
 """
 from __future__ import annotations
@@ -63,8 +77,39 @@ KNOWN_PRAGMAS = {"opt_strength_reduction", "opt_unroll_loops", "opt_common_subs"
                  "inline_depth", "inline_max_size", "inline_max_total_size", "inline_bottom_up", "auto_inline",
                  "dont_inline", "peephole", "scheduling", "global_optimizer", "optimization_level", "optimize_for_size",
                  "fp_contract", "pack", "once", "exceptions", "cplusplus", "ANSI_strict", "warning", "message",
-                 "readonly_strings", "pool_strings", "opt_unroll_count", "inline_max_auto_size"}
+                 "readonly_strings", "pool_strings", "opt_unroll_count", "inline_max_auto_size",
+                 "push", "pop"}     # push/pop scope a steering pragma (steer-pragma)
 CODE_PRAGMA = re.compile(r"asm", re.I)
+# optimiser-pass switches: set for one function to make it match, they are the named steering class (steer-pragma)
+STEER_PRAGMAS = {"opt_lifetimes", "opt_dead_assignments", "opt_propagation", "opt_dead_code", "opt_common_subs",
+                 "opt_common", "opt_loop_invariants", "opt_vectorize_loops"}
+STEER_DECLARED = re.compile(r"steer=pragma:([A-Za-z_][\w]*(?:,[A-Za-z_][\w]*)*)")
+# a new source (a lane's harvest) may carry a steering pragma only as the idiom; these warnings refuse it there
+NEW_SOURCE_REFUSALS = {"steer-pragma-undeclared", "steer-pragma-unscoped"}
+SDK_ONLY_PROFILE = "gcc404x-"      # cc= prefix allowed only inside data/sdk-gcc4-units.json
+SDK_UNITS_FILE = Path("data") / "sdk-gcc4-units.json"
+_sdk_units: dict = {}
+
+
+def sdk_units(root: Path = ROOT) -> dict[str, list[tuple[int, int]]]:
+    """{module: [(start, end), ...]} from data/sdk-gcc4-units.json under `root` (empty when the file is absent, so
+    every cc=gcc404x-* source is refused there)."""
+    key = str(root)
+    if key not in _sdk_units:
+        import json
+        p = root / SDK_UNITS_FILE
+        doc = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {"modules": {}}
+        _sdk_units[key] = {m: [(int(u["start"], 16), int(u["end"], 16)) for u in us]
+                           for m, us in doc["modules"].items()}
+    return _sdk_units[key]
+
+
+def in_sdk_unit(header: dict, root: Path = ROOT) -> bool:
+    try:
+        start, end = int(header["start"], 16), int(header["end"], 16)
+    except (KeyError, ValueError):
+        return False
+    return any(lo <= start and end <= hi for lo, hi in sdk_units(root).get(header.get("module", ""), []))
 
 
 @dataclass(frozen=True)
@@ -269,7 +314,45 @@ REGISTER_BINDING = re.compile(r"""^\s*(?:static\s+|volatile\s+|const\s+)*registe
 EMPTY_ASM = re.compile(r"""(?:__asm__|__asm|asm)\s*(?:__volatile__|volatile)?\s*\(\s*(?:""\s*)+(?:[:)]|$)""")
 
 
-def check_text(text: str, header: dict | None = None, tree: str = "src") -> list[Finding]:
+def steer_findings(text: str, code: str, lines: list[str]) -> list[Finding]:
+    """One finding per steering pragma setting (a STEER_PRAGMAS line whose value is not `reset`): the idiom
+    `steer-pragma` when it is scoped (between a `#pragma push` and its `#pragma pop`, or followed by
+    `#pragma <name> reset`) and the source declares it (`steer=pragma:<name>` in a comment); otherwise a warning,
+    steer-pragma-unscoped or steer-pragma-undeclared (accepted proofs before 2026-11-09 carry such pragmas unnamed;
+    a lane's new source is refused for either, NEW_SOURCE_REFUSALS)."""
+    declared = {n for m in STEER_DECLARED.finditer(text) for n in m.group(1).split(",")}
+    pragmas = [(m.group(1), m.group(2).strip(), _line_of(code, m.start())) for m in PRAGMA.finditer(code)]
+    out: list[Finding] = []
+    depth_at: list[int] = []      # push depth before each pragma
+    closed: list[bool] = []       # for a pragma inside a push: its push is popped later
+    stack: list[int] = []
+    for i, (name, _value, _ln) in enumerate(pragmas):
+        depth_at.append(len(stack))
+        closed.append(False)
+        if name == "push":
+            stack.append(i)
+        elif name == "pop" and stack:
+            start = stack.pop()
+            for j in range(start + 1, i):
+                if depth_at[j] > depth_at[start]:
+                    closed[j] = True
+    for i, (name, value, ln) in enumerate(pragmas):
+        if name not in STEER_PRAGMAS or value == "reset":
+            continue
+        reset_later = any(n == name and v == "reset" for n, v, _ in pragmas[i + 1:])
+        scoped = closed[i] or reset_later
+        kind, sev = (("steer-pragma", IDIOM) if scoped and name in declared else
+                     ("steer-pragma-unscoped", WARN) if not scoped else ("steer-pragma-undeclared", WARN))
+        out.append(Finding(kind, sev, ln, lines[ln - 1]))
+    return out
+
+
+def new_source_refusals(findings: list[Finding]) -> list[Finding]:
+    """What a lane's harvest refuses: the refusals plus a steering pragma that is not the declared, scoped idiom."""
+    return [f for f in findings if f.severity == REFUSE or f.kind in NEW_SOURCE_REFUSALS]
+
+
+def check_text(text: str, header: dict | None = None, tree: str = "src", root: Path = ROOT) -> list[Finding]:
     """Findings for one source. `header` is the parsed HSTMATCH header (for extra=); `tree` is "src" for a source that
     is installed (an `extra=` key is refused there) or anything else (wip, a lane's scratch file)."""
     code = strip_comments(text)
@@ -301,6 +384,7 @@ def check_text(text: str, header: dict | None = None, tree: str = "src") -> list
             findings.append(Finding("pragma-code", REFUSE, ln, lines[ln - 1]))
         elif name not in KNOWN_PRAGMAS and not TEXT_SECTION.search(m.group(0)):
             findings.append(Finding("pragma-unknown", WARN, ln, lines[ln - 1]))
+    findings += steer_findings(text, code, lines)
     for m in TEXT_SECTION.finditer(code):
         ln = _line_of(code, m.start())
         findings.append(Finding("text-section", REFUSE, ln, lines[ln - 1]))
@@ -311,6 +395,9 @@ def check_text(text: str, header: dict | None = None, tree: str = "src") -> list
             findings.append(Finding("binary-include", REFUSE, ln, lines[ln - 1]))
     if tree == "src" and header is not None and "extra" in header:
         findings.append(Finding("extra-header", REFUSE, 1, f'extra="{header["extra"]}"'))
+    if header is not None and str(header.get("cc", "")).startswith(SDK_ONLY_PROFILE) and not in_sdk_unit(header, root):
+        findings.append(Finding("gcc404x-outside-sdk", REFUSE, 1, f'cc={header["cc"]} module={header.get("module")} '
+                                f'start={header.get("start")}'))
     return sorted(findings, key=lambda f: (f.line, f.kind))
 
 
@@ -328,7 +415,7 @@ def check_file(path: Path, root: Path = ROOT) -> list[Finding]:
     m = re.search(r"/\*\s*HSTMATCH\s+(.*?)\*/", text[:2000], re.S)
     if m:
         header = {k: v.strip('"') for k, v in re.findall(r'(\w+)=("[^"]*"|\S+)', m.group(1))}
-    return check_text(text, header, tree_of(path, root))
+    return check_text(text, header, tree_of(path, root), root)
 
 
 def refusals(findings: list[Finding]) -> list[Finding]:

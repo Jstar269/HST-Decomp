@@ -12,9 +12,9 @@ the tiers progress is reported in, are defined in [`COMPLETION.md`](COMPLETION.m
   address names from Ghidra (`FUN_0011d894`), and types are provisional. Every note line says "names and types
   await human review" until a person has reviewed the source.
   <!-- hstprogress:begin guide-source-kinds -->
-- Of the 13,394 sources (measured 2026-11-07), 7,217 are address-substituted **clones** of another matched source
+- Of the 13,441 sources (measured 2026-11-10), 7,235 are address-substituted **clones** of another matched source
   (retail contains the same code many times), 1,053 are mechanical translations of Ghidra pseudocode, 1,870 are such
-  translations corrected by hand, 3,023 are hand-written, 136 are instances of container templates, and 85 are newlib
+  translations corrected by hand, 3,052 are hand-written, 136 are instances of container templates, and 85 are newlib
   library functions translated from newlib sources (37 more are clones of them, counted among the clones), and 10 have
   no known note kind.
 - 126 of the sources are newlib library functions compiled with Sony's `psp-gcc` kits; all others are game code
@@ -216,8 +216,21 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
   with lbp-psp-decomp under the `gcc4_home` setting (provenance: the maintainers' `compilers/lbp-gcc4/PROVENANCE.json`,
   hashed by the toolchain lock). Use it only for functions no gcc131/gcc171 profile reproduces (later-compiler
   shapes: duplicated epilogues, tail calls, word loads where GCC 3.3 narrows).
+  `gcc404x-O0`/`O1`/`O2`/`O3`/`Os` is the SDK-ONLY profile (owner decision 2026-11-09) for the Sony SDK objects that
+  use Allegrex `ins rt,$zero,pos,size`, which no other profile emits (269 functions in each game module, 110,024 B
+  each). It is `psp-gcc-4.0.4x`: GNU GCC 4.0.4 with the pspdev Allegrex patch (`65aaa94632-gcc-4.0.2.patch`) and
+  lbp-psp-decomp's four measured Allegrex changes, `lbp-allegrex-tuning.diff` (costs), `allegrex-sched.md`
+  (scheduling), `lbp-ins-from-zero-4.0.4.diff` (an `and` with a mask that clears one contiguous run of bits that
+  `andi` cannot encode becomes `ins rd,$zero,pos,len`) and `lbp-allegrex-xfer-4.0.4.diff` (no FPU transfer delay),
+  the kit lbp-psp-decomp adopted and the one under `gcc4_home` (flags as `gcc402x`: `-G0 -fno-merge-constants
+  -mpreferred-stack-boundary=4`). Provenance: lbp-psp-decomp's `toolchain/gcc4/PROVENANCE.json`, build
+  `psp-gcc-4.0.4x` (sources, patch hashes, configure line, expected hashes: `cc1` `c1e0e28bc0479600...`, `cc1plus`
+  `165786919b1a23af...`); the toolchain lock hashes the kit. It is not Sony's compiler, so `tools/hstgate.py` refuses
+  it (`gcc404x-outside-sdk`) for a function outside the SDK units of `data/sdk-gcc4-units.json`
+  (`tools/hstsdkunits.py`: runs of non-game functions that contain an `ins $zero` function; the list is in the
+  toolchain lock). Game code keeps mwccpsp.
   <!-- hstprogress:begin guide-profiles -->
-  Measured 2026-11-07, the public sources use `mwcc219` (13,268 sources), `gcc171-O2` (104 sources), `gcc171x-O2` (20
+  Measured 2026-11-10, the public sources use `mwcc219` (13,315 sources), `gcc171-O2` (104 sources), `gcc171x-O2` (20
   sources) and `gcc171x-O1` (2 sources).
   <!-- hstprogress:end -->
 - `rodata=0xADDR`, `data=`, `sdata=`, `bss=`, `sbss=`: where the object's sections go when the function refers to

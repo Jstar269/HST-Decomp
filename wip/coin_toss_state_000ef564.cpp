@@ -127,7 +127,8 @@ extern "C" void FUN_000ef564(Coin *self, int state)
         b = DAT_002d71c8 + (DAT_002d71cc - DAT_002d71c8) * ((unsigned)GlobalRand() * (1.0f / 32768.0f));
         float n = FUN_0000bd2c(FUN_0000bd2c(Min(a[0], b)) / 2.0f) * 2.0f;
         float k = 1.0f + n;
-        float o = DAT_00338bb8 + (d - k * self->period / 2.0f) / self->period;
+        float o = DAT_00338bb8;
+        o += (d - k * self->period / 2.0f) / self->period;
         float m = k + DAT_00338bbc;
         self->offset = o;
         self->speed = self->period / m;
@@ -153,9 +154,11 @@ extern "C" void FUN_000ef564(Coin *self, int state)
     }
     }
 }
-// NEAR: 261/261 words, 15 differ (first +0x32c).
-// Left: case 2 tail float scheduling - retail loads DAT_00338bb8 before period and DAT_00338bbc after k*period,
-// with k+bbc added before the offset store; every ordering tried (m first, o first, inline) hoists bbc first.
-// Case 3: retail loads heads (a1) before the tail pointer (a0); ours loads a0 first.
-// `float a[2]` reproduces the retail slots 72/68 (a single float leaves them at 76/72).
-// near miss from lane ol2 (unreviewed)
+// NEAR 11 (lane pn1b 2026-11-10, was 15): `float o = DAT_00338bb8; o += (d - k * period / 2.0f) / period;` (compound add) gives
+// retail's case-2 schedule (bb8 loaded before period, k + bbc after the offset chain); left (9 words) is only FPU numbering:
+// retail n f2 / bb8 f1 / period f3, ours n f1 / bb8 f3 / period f2. Ruled out: `o` loaded before k (15) or before n (258),
+// no `n` local (11), `k = n + 1.0f` / `k = n; k += 1.0f` (11), a named `t` for the numerator (11), offset/speed stored without
+// locals (18), speed computed after the offset store (18).
+// Case 3 (2 words): retail loads `heads` (lbu a1) before the `tail` pointer (lw a0 in the jal slot); ruled out: unsigned char/bool
+// prototypes (37-39), `!= 0` (37), an int/uchar getter (11), an int local (11).
+// improved by lane pn1b (unreviewed): 15 -> 11 differing words

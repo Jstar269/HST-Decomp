@@ -24,6 +24,7 @@ KIT171_B = "psp-gcc-1.7.1/lib/gcc-lib/psp/3.3.3+allegrex-2.2.2-psp-1.7.1/"
 UNOPTIMIZED = {"gcc131-O0", "gcc171-O0"}
 G4HOME = "/synthetic/lbp-gcc4"
 GCC402X = {f"gcc402x-{o}" for o in ("O0", "O1", "O2", "O3", "Os")}
+GCC404X = {f"gcc404x-{o}" for o in ("O0", "O1", "O2", "O3", "Os")}
 
 
 class GccProfileTests(unittest.TestCase):
@@ -37,7 +38,7 @@ class GccProfileTests(unittest.TestCase):
 
     def test_unoptimized_sony_gcc_profiles_are_available(self) -> None:
         profiles = hstmatch.gcc_profiles()
-        self.assertEqual({n for n in profiles if n.endswith("-O0")}, UNOPTIMIZED | {"gcc402x-O0"})
+        self.assertEqual({n for n in profiles if n.endswith("-O0")}, UNOPTIMIZED | {"gcc402x-O0", "gcc404x-O0"})
         self.assertLessEqual(UNOPTIMIZED, hstmatch.GCC_PROFILE_NAMES)
         for name in UNOPTIMIZED:
             self.assertEqual(profiles[name]["driver"], f"{HOME}/psp-gcc-1.3.1/bin/psp-gcc")
@@ -47,7 +48,7 @@ class GccProfileTests(unittest.TestCase):
 
     def test_optimizing_profiles_are_unchanged(self) -> None:
         profiles = hstmatch.gcc_profiles()
-        self.assertEqual(len(profiles), 23)
+        self.assertEqual(len(profiles), 28)
         self.assertEqual(profiles["gcc171-O2"]["flags"], "-O2 -G0 -fno-merge-constants")
         self.assertEqual(profiles["gcc171x-O2"]["flags"], "-O2 -G0 -fno-merge-constants -mext")
         self.assertEqual(profiles["gcc131-Os"]["flags"], "-Os -G0 -fno-merge-constants")
@@ -61,7 +62,7 @@ class GccProfileTests(unittest.TestCase):
         locked = locked["core"]["profiles"]
         for name, rec in locked.items():
             self.assertEqual(live.get(name), rec, name)
-        self.assertLessEqual(set(live) - set(locked), UNOPTIMIZED | GCC402X)
+        self.assertLessEqual(set(live) - set(locked), UNOPTIMIZED | GCC402X | GCC404X)
         self.assertEqual(live["gcc171-O0"], {"compiler": "psp-gcc", "driver": "psp-gcc-1.3.1/bin/psp-gcc",
                                              "B": KIT171_B, "flags": "-O0 -G0 -fno-merge-constants"})
 
@@ -81,7 +82,18 @@ class GccProfileTests(unittest.TestCase):
                                               "driver": "psp-gcc-4.0.2x/bin/psp-gcc", "B": None,
                                               "flags": "-O2 -G0 -fno-merge-constants -mpreferred-stack-boundary=4"})
         # the default profiles do not change: no record of theirs names a kit
-        self.assertTrue(all("kit" not in rec for n, rec in live.items() if n not in GCC402X))
+        self.assertTrue(all("kit" not in rec for n, rec in live.items() if n not in GCC402X | GCC404X))
+
+    def test_gcc404x_is_the_sdk_only_profile_on_the_same_kit(self) -> None:
+        """Owner decision 2026-11-09: gcc404x-* (psp-gcc-4.0.4x, lbp-decomp's GCC 4.0.4 kit with ins-from-zero) for
+        Sony SDK code only; same kit setting and flags as gcc402x-*, its own build directory."""
+        profiles = hstmatch.gcc_profiles()
+        self.assertLessEqual(GCC404X, hstmatch.GCC_PROFILE_NAMES)
+        for name in GCC404X:
+            o = name.split("-")[1]
+            self.assertEqual(profiles[name]["driver"], f"{G4HOME}/psp-gcc-4.0.4x/bin/psp-gcc")
+            self.assertEqual(profiles[name]["flags"], f"-{o} -G0 -fno-merge-constants -mpreferred-stack-boundary=4")
+        self.assertEqual(hstproof.live_profiles()["gcc404x-O2"]["kit"], "gcc4_home")
 
     def test_gcc402x_without_its_setting_is_refused_only_when_used(self) -> None:
         hstmatch._gcc_profiles = None

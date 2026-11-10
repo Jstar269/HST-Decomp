@@ -143,6 +143,62 @@ class LedgerTests(unittest.TestCase):
             self.assertEqual(att.status("EBOOT.BIN", 0x2000)["words_left"], 2)
             self.assertIn("2026-10-21", att.status("EBOOT.BIN", 0x2000)["words_left_source"])
 
+    def test_a_far_or_unbuildable_wip_file_is_a_draft_not_a_near_miss(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.build(Path(tmp))
+
+            def status(measurements: dict) -> dict:
+                return A.collect(("EBOOT.BIN",), queue_dir=Path(tmp) / "queue", blocked_path=Path(tmp) / "blocked.json",
+                                 ext_root=Path(tmp) / "ext", root=Path(tmp) / "root", measurements=measurements,
+                                 sizes={"EBOOT.BIN": {0x2000: 0x2140}}).status("EBOOT.BIN", 0x2000)
+
+            at_limit = status({"wip/g_00002000.c": {"words_left": A.NEAR_WORDS_MAX, "words": 80, "class": "unknown"}})
+            self.assertEqual((at_limit["status"], at_limit["evidence"]), ("near", "main-tree"))
+            far = status({"wip/g_00002000.c": {"words_left": A.NEAR_WORDS_MAX + 1, "words": 80, "class": "missing_extra_insn"}})
+            self.assertEqual((far["status"], far["evidence"], far["words_left"], far["words"]),
+                             ("draft", "main-tree-far", A.NEAR_WORDS_MAX + 1, 80))
+            self.assertEqual(far["wip"], "wip/g_00002000.c")                 # the draft stays named, as a hint
+            broken = status({"wip/g_00002000.c": {"words_left": None, "words": 80, "class": "tool_state"}})
+            self.assertEqual((broken["status"], broken["evidence"]), ("near", "main-tree"))   # the lane line says 5 words
+            # a far draft is offered as fresh work, and never as a near miss
+            self.assertEqual(Q.TIER_NAMES[Q.offer_tier([far])], "fresh")
+            self.assertEqual(Q.TIER_NAMES[Q.offer_tier([far], near_mode="off")], "fresh")
+            self.assertIsNone(Q.offer_tier([far], near_mode="only"))
+
+    def test_an_unbuildable_wip_file_without_a_count_is_a_draft(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "queue").mkdir()
+            (tmp / "root" / "wip").mkdir(parents=True)
+            (tmp / "root" / "wip" / "g_00002000.c").write_text(HEADER.format(start=0x2000, end=0x2140) + "int x;\n", encoding="utf-8")
+
+            def status(cls: str) -> dict:
+                return A.collect(("EBOOT.BIN",), queue_dir=tmp / "queue", blocked_path=tmp / "none.json", ext_root=None,
+                                 root=tmp / "root", sizes={"EBOOT.BIN": {0x2000: 0x2140}},
+                                 measurements={"wip/g_00002000.c": {"words_left": None, "words": 80, "class": cls}}
+                                 ).status("EBOOT.BIN", 0x2000)
+
+            self.assertEqual((status("tool_state")["status"], status("tool_state")["evidence"]), ("draft", "main-tree-unbuildable"))
+            self.assertEqual(status("jump_table_rodata")["status"], "near")   # the code may match; only the table is unplaced
+
+    def test_a_far_lane_near_line_is_a_draft(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "queue").mkdir()
+            (tmp / "root" / "try" / "harvest-ds-a").mkdir(parents=True)
+            (tmp / "ext" / "ds-a").mkdir(parents=True)
+            (tmp / "queue" / "ds-a-00.json").write_text(json.dumps(
+                {"module": "EBOOT.BIN", "kind": "singles", "items": [item(0x1000), item(0x2000)]}), encoding="utf-8")
+            (tmp / "ext" / "ds-a" / "LANE.json").write_text(json.dumps({"lane": "ds-a", "batch": "ds-a-00.json"}), encoding="utf-8")
+            (tmp / "ext" / "ds-a" / "PROGRESS.md").write_text(
+                "0x00001000 NEAR 21 wip/a_00001000.c\n0x00002000 NEAR 20 wip/b_00002000.c\n", encoding="utf-8")
+            att = A.collect(("EBOOT.BIN",), queue_dir=tmp / "queue", blocked_path=tmp / "none.json", ext_root=tmp / "ext",
+                            measurements={}, root=tmp / "root", sizes={"EBOOT.BIN": {0x1000: 0x1140, 0x2000: 0x2140}})
+            self.assertEqual((att.status("EBOOT.BIN", 0x1000)["status"], att.status("EBOOT.BIN", 0x1000)["evidence"]),
+                             ("draft", "lane-progress-far"))
+            self.assertEqual(att.status("EBOOT.BIN", 0x2000)["status"], "near")
+            self.assertEqual(att.summary["EBOOT.BIN"]["draft"]["functions"], 1)
+
     def test_no_ext_root_reads_only_the_main_tree_and_the_batches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.build(Path(tmp))

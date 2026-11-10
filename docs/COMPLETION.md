@@ -25,8 +25,10 @@ the definition from the start, and the scope never shrinks.
 2. **From source, with the original toolchain.** The byte comes from C or C++ compiled with the recorded profile
    (`mwccpsp` 3.0.1 build 219, or the identified Sony `psp-gcc` kit; for code a later Sony compiler built, the
    secondary `gcc402x` profile adopted by the owner on 2026-10-27, an open-source GCC 4.0.2 build with the pspdev
-   Allegrex patch and measured Allegrex tuning whose provenance the toolchain lock records) and recorded per-file
-   settings, or from
+   Allegrex patch and measured Allegrex tuning whose provenance the toolchain lock records; and, for Sony SDK code
+   only, the `gcc404x` profile adopted by the owner on 2026-11-09, lbp-psp-decomp's GCC 4.0.4 build with the same
+   kind of measured Allegrex changes including ins-from-zero, which the gate refuses outside the listed SDK units)
+   and recorded per-file settings, or from
    hand-written assembly only where the original was assembly. Never: retail bytes included as binary, machine code
    pasted into a source (`asm` statements that emit instructions, `.word`/`.byte` emission), object or byte patching,
    post-link fix-ups, changes to the verifier, skipped comparisons, or experimental flags (`extra=`).
@@ -39,6 +41,14 @@ the definition from the start, and the scope never shrinks.
    `.set push`/`noreorder`/`pop` mode switches, which emit nothing; the owner approved both of these extensions on
    2026-10-27); `hstgate.py`
    reports it as the idiom `vfpu-inline-asm` and refuses anything else. All other code around it is C.
+   A named steering class (owner decision 2026-11-09): a per-function optimiser pragma that the original compiler
+   documents (`hstgate.STEER_PRAGMAS`: `opt_lifetimes`, `opt_dead_assignments`, `opt_propagation`, ...) may make
+   one function byte-identical when no natural source matches. It is scoped to that function (`#pragma push` /
+   `#pragma pop`, or a later `#pragma <name> reset`) and the source's note names it, `steer=pragma:<name>`;
+   `hstgate.py` reports it as the idiom `steer-pragma`, a lane harvest refuses a steering pragma written any other
+   way, and `tools/hststeer.py` lists and counts every such source (including the 13 sources accepted before the
+   rule, whose pragmas are unscoped and unnamed). When one pragma explains several functions of a translation unit,
+   it becomes that unit's setting instead.
 3. **In its place in the whole module.** The source is compiled in its translation unit and linked in link order as
    part of the module build. Today's function-at-a-time matches (`tools/hstmatch.py`) are a necessary step, counted
    in tier 1 below, not the goal.
@@ -58,9 +68,9 @@ The headline figure is **strict**: bytes passing all seven gates over all in-sco
 scope are fixed, it can only rise. The tiers below explain where the remaining work is; each is a share of the same
 denominator.
 
-| Tier | A byte is in this tier when | Measured <!-- hstprogress:begin completion-date -->2026-11-07<!-- hstprogress:end --> (public sources) |
+| Tier | A byte is in this tier when | Measured <!-- hstprogress:begin completion-date -->2026-11-10<!-- hstprogress:end --> (public sources) |
 | --- | --- | --- |
-| T1 | its function matches exactly in isolation (`hstmatch.py`) | <!-- hstprogress:begin completion-t1 -->24.524% (2,274,780 B<!-- hstprogress:end -->; code only, matched one function at a time; data is not counted in this tier) |
+| T1 | its function matches exactly in isolation (`hstmatch.py`) | <!-- hstprogress:begin completion-t1 -->25.089% (2,327,184 B<!-- hstprogress:end -->; code only, matched one function at a time; data is not counted in this tier) |
 | T2 | it is reproduced by the whole-module build from source (gates 1-4, 6) | <!-- hstprogress:begin completion-t2 -->30.895% (2,865,766 B<!-- hstprogress:end -->; code, data and relocation-table bytes the whole-module build produces from source, so it can exceed T1; retail-derived scaffolding is never counted; current public build reports, both game-module images identical and all generated relocation tables equal) |
 | T3 | T2, and the shifted build passes (gate 5) | <!-- hstprogress:begin completion-t3 -->30.869% (2,863,366 B<!-- hstprogress:end -->; shifted static checks and numeric-address scans passed for counted sources; shifted runtime not run) |
 | T4 = strict | T3, and the source is reviewed (gate 7) | <!-- hstprogress:begin completion-t4 -->0.000% (0 B)<!-- hstprogress:end --> |

@@ -97,6 +97,20 @@ def scope(led: dict | None = None) -> dict:
     return out
 
 
+def known_private(start: int, end: int, public_hit: bool, sgx_block: tuple[int, int] | None,
+                  private_starts: set[int], private_spans: tuple[list[int], list[int]]) -> bool:
+    """Is a function known to be code the public repository does not carry (owner decision 2026-11-10: the public
+    figure counts only publishable source)? Only what is known: a function inside the SGX middleware block
+    (hstorigin.SGX_BLOCKS) or covered by a source of an origin class hstpublish.EXCLUDED_CLASSES keeps private. A
+    function a public source covers is publishable whatever its address; one nothing covers yet, outside the SGX block,
+    stays publishable until a source attributes it (so the figure is never overstated)."""
+    if public_hit:
+        return False
+    if sgx_block and sgx_block[0] <= start < sgx_block[1]:
+        return True
+    return start in private_starts or A.covered_by_span(private_spans[0], private_spans[1], start, end)
+
+
 def measure(modules: list[str] | None = None, root: Path = ROOT, include_excluded: bool = False,
             classes: dict[str, str] | None = None, led: dict | None = None, from_proofs: bool = False) -> dict:
     """Matched functions and code bytes over `modules` (default: the two game modules of data/modules.json).
@@ -109,10 +123,14 @@ def measure(modules: list[str] | None = None, root: Path = ROOT, include_exclude
         classes, _warnings = hstorigin.classify(root)
     keep = lambda cls: include_excluded or cls not in hstpublish.EXCLUDED_CLASSES      # noqa: E731
     src: dict[tuple[str, int], dict] = {}
+    private: dict[tuple[str, int], dict] = {}     # sources of the excluded classes (for the publishable scope)
     wip_public = 0
     awaiting = 0
     for rel, cls in classes.items():
         if not keep(cls):
+            if rel.startswith("src/") and not from_proofs:
+                h = M.parse_header(root / rel)
+                private[(h["module"], h["start"])] = {"start": h["start"], "end": h["end"], "module": h["module"]}
             continue
         path = root / rel
         h = M.parse_header(path)
@@ -131,22 +149,33 @@ def measure(modules: list[str] | None = None, root: Path = ROOT, include_exclude
                                                     "end": int(p["end"], 16), "module": p["module"]}
                for p in hstproof.accepted_proofs(root=root)
                if p["module"] in modules and p["source"] in classes and keep(classes[p["source"]])}
+        private = {(p["module"], int(p["start"], 16)): {"start": int(p["start"], 16), "end": int(p["end"], 16),
+                                                        "module": p["module"]}
+                   for p in hstproof.accepted_proofs(root=root)
+                   if p["module"] in modules and p["source"] in classes and not keep(classes[p["source"]])}
     blocked = A.load_blocked(root / "data" / "blocked_functions.json")
     per_module = {}
     total = {"functions": 0, "matched_functions": 0, "code_bytes": 0, "matched_code_bytes": 0,
-             "blocked_functions": 0, "blocked_code_bytes": 0}
+             "blocked_functions": 0, "blocked_code_bytes": 0, "publishable_functions": 0, "publishable_code_bytes": 0}
     for m in led["modules"]:
         if m["name"] not in modules:
             continue
         starts, maxend = A.exact_spans(src, m["name"])
         exact_starts = {s for (mod, s) in src if mod == m["name"]}
+        priv_spans = A.exact_spans(private, m["name"])
+        priv_starts = {s for (mod, s) in private if mod == m["name"]}
+        sgx = hstorigin.SGX_BLOCKS.get(m["name"])
         row = {"functions": 0, "matched_functions": 0, "code_bytes": 0, "matched_code_bytes": 0,
-               "blocked_functions": 0, "blocked_code_bytes": 0, "blocked_matched": 0}
+               "blocked_functions": 0, "blocked_code_bytes": 0, "blocked_matched": 0,
+               "publishable_functions": 0, "publishable_code_bytes": 0}
         for f in m["functions"]:
             size = f["end"] - f["start"]
             hit = f["start"] in exact_starts or A.covered_by_span(starts, maxend, f["start"], f["end"])
             row["functions"] += 1
             row["code_bytes"] += size
+            if not known_private(f["start"], f["end"], hit, sgx, priv_starts, priv_spans):
+                row["publishable_functions"] += 1
+                row["publishable_code_bytes"] += size
             if hit:
                 row["matched_functions"] += 1
                 row["matched_code_bytes"] += size
@@ -160,6 +189,8 @@ def measure(modules: list[str] | None = None, root: Path = ROOT, include_exclude
         for k in total:
             total[k] += row[k]
     total["percent_code_bytes"] = round(100 * total["matched_code_bytes"] / total["code_bytes"], 3) if total["code_bytes"] else 0.0
+    total["percent_publishable"] = (round(100 * total["matched_code_bytes"] / total["publishable_code_bytes"], 3)
+                                    if total["publishable_code_bytes"] else 0.0)
     return {"modules": per_module, "total": total, "sources": len(src), "near_misses": wip_public,
             "provenance_notes_awaiting_review": awaiting, "human_reviewed": reviewed_count(src, root),
             "blocked_entries": len(blocked), "source_rows": src}
@@ -353,6 +384,9 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
         "function, to the game's exact bytes. |",
         f"| **Functions matched** (T1) | **{100 * t['matched_functions'] / t['functions']:.1f}%** | "
         f"{t['matched_functions']:,} of the {t['functions']:,} game functions. |",
+        f"| **Publishable code matched** (T1) | **{t['percent_publishable']:.1f}%** | {t['matched_code_bytes']:,} of "
+        f"the {t['publishable_code_bytes']:,} code bytes this repository can carry: the game's functions without the "
+        "Sony SDK and middleware code known so far (that code comes from the player's own copy). |",
         f"| **Built from source** (T2) | **{ladder['t2_percent']:.1f}%** | The share of the game's program files "
         "that the whole build reproduces, byte for byte, from this source. |",
         "",
@@ -396,6 +430,9 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
         f"| Code matched, both game modules | {t['matched_code_bytes']:,} B ({t['matched_functions']:,} functions) | "
         f"{t['code_bytes']:,} B ({t['functions']:,} functions) | {t['percent_code_bytes']:.3f}% |",
         *module_rows,
+        f"| Code matched, publishable scope (known Sony SDK and SGX code left out) | {t['matched_code_bytes']:,} B "
+        f"({t['matched_functions']:,} functions) | {t['publishable_code_bytes']:,} B ({t['publishable_functions']:,} "
+        f"functions) | {t['percent_publishable']:.3f}% |",
         *(f"| Tier {n}: {label} | {ladder[f't{n}_bytes']:,} B | {scope} | {ladder[f't{n}_percent']:.3f}% |"
           for n, label in ((1, "function matches"), (2, "whole-module build"), (3, "shifted build"),
                            (4, "strict (reviewed)")))])
@@ -480,6 +517,9 @@ def print_figures(fig: dict, sc: dict, ladder: dict, reports: dict) -> None:
     t = fig["total"]
     print(f"  {'Both':22} {t['matched_functions']:6,} / {t['functions']:<6,} fns  {t['matched_code_bytes']:9,} / {t['code_bytes']:<9,} B  "
           f"{t['percent_code_bytes']:7.3f} %   blocked {t['blocked_functions']} fns / {t['blocked_code_bytes']:,} B")
+    print(f"  {'Publishable scope':22} {t['matched_functions']:6,} / {t['publishable_functions']:<6,} fns  "
+          f"{t['matched_code_bytes']:9,} / {t['publishable_code_bytes']:<9,} B  {t['percent_publishable']:7.3f} %   "
+          "(owner 2026-11-10: known Sony SDK and SGX code left out; strict figure unchanged)")
     print(f"  public sources {fig['sources']:,}; near misses {fig['near_misses']}; notes awaiting review "
           f"{fig['provenance_notes_awaiting_review']:,}; human reviewed "
           f"{'not available (no reviews/decisions.jsonl)' if fig['human_reviewed'] is None else fig['human_reviewed']}")

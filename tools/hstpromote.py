@@ -859,15 +859,19 @@ def cmd_verify(args) -> int:
     return 1 if problems else 0
 
 
+GATE_FILES = {"tools/hstgate.py", "data/sdk-gcc4-units.json"}   # what the gate decides from
+
+
 def migration_scope(old: dict, new: dict) -> tuple[str, set[str]]:
-    """'gate' when only tools/hstgate.py changed; 'include' when only include/ changed (with or without the gate);
+    """'gate' when only tools/hstgate.py or its SDK unit list (data/sdk-gcc4-units.json) changed; 'include' when only
+    include/ changed (with or without the gate);
     'full' for anything else (a compiler, kit, binutils, environment, profile or other comparison-code change)."""
     keys = {k for k in set(old) | set(new) if old.get(k) != new.get(k)}
     a, b = old.get("comparison_code") or {}, new.get("comparison_code") or {}
     code = {f for f in set(a) | set(b) if a.get(f) != b.get(f)}
     oi, ni = old.get("include") or {}, new.get("include") or {}
     headers = {f for f in set(oi) | set(ni) if oi.get(f) != ni.get(f)}
-    if keys - {"comparison_code", "include"} or code - {"tools/hstgate.py"}:
+    if keys - {"comparison_code", "include"} or code - GATE_FILES:
         return "full", headers
     return ("include" if headers else "gate"), headers
 

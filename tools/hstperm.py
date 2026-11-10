@@ -618,6 +618,105 @@ def mutate(text: str, rng: random.Random) -> str | None:
     return "\n".join(lines) if applied else None
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Pragma variants (2026-11-09). Two kinds, kept apart because they mean different things:
+#   unit      a per-unit compiler setting the project already records at file scope (docs/MWCC-DIGEST.md section 15):
+#             inserted after the header line, as the matched sources carry it;
+#   steer     a per-function optimiser pragma, the named steering class of tools/hstgate.py (`steer-pragma`): scoped to
+#             the one function with `#pragma push` / `#pragma pop` and declared as `steer=pragma:<name>` in the leading
+#             comments. It is used only when no natural source matches, and tools/hststeer.py lists every such source.
+UNIT_PRAGMAS = (("opt_strength_reduction", "off"), ("opt_unroll_loops", "off"), ("inline_depth", "(8)"))
+STEER_PRAGMAS = ("opt_lifetimes", "opt_dead_assignments", "opt_propagation", "opt_dead_code", "opt_common_subs",
+                 "opt_loop_invariants")
+_STRING = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'')
+_SIG_PREFIX = re.compile(r'^[\w\s\*&:<>,~"]*$')
+
+
+def _code_lines(text: str) -> list[str]:
+    """The text's lines with comments and string contents blanked (line numbers kept), for brace counting."""
+    import hstgate
+    return [_STRING.sub('""', line) for line in hstgate.strip_comments(text).split("\n")]
+
+
+def function_span(text: str, symbol: str) -> tuple[int, int] | None:
+    """(first, last) line indices of the definition of `symbol`: from the first line of its signature to the line of
+    its closing brace. None when the source does not define a function of that name (a mangled C++ symbol)."""
+    code = _code_lines(text)
+    sig = re.compile(rf"(?<![\w.>:]){re.escape(symbol)}\s*\(")
+    for d, line in enumerate(code):
+        m = sig.search(line)
+        if not m or not _SIG_PREFIX.match(line[:m.start()]) or re.search(r"\b(?:return|if|while|for|switch|else|case)\b",
+                                                                         line[:m.start()]):
+            continue
+        rest = "\n".join(code[d:])
+        pos, depth = rest.index("(", m.start()), 0
+        for pos in range(pos, len(rest)):
+            depth += {"(": 1, ")": -1}.get(rest[pos], 0)
+            if depth == 0:
+                break
+        tail = rest[pos + 1:]
+        brace, semi = tail.find("{"), tail.find(";")
+        if brace < 0 or (0 <= semi < brace):
+            continue                                    # a declaration
+        depth, end = 0, None
+        for i in range(d, len(code)):
+            for ch in (code[i] if i > d else code[i][m.start():]):
+                depth += {"{": 1, "}": -1}.get(ch, 0)
+                if ch == "}" and depth == 0:
+                    end = i
+                    break
+            if end is not None:
+                break
+        if end is None:
+            return None
+        first = d
+        while first > 1 and code[first - 1].strip() and not code[first - 1].rstrip().endswith((";", "}", "{")) \
+                and not code[first - 1].lstrip().startswith("#"):
+            first -= 1
+        return first, end
+    return None
+
+
+def has_pragma(text: str, name: str) -> bool:
+    import hstgate
+    return bool(re.search(rf"^[ \t]*#[ \t]*pragma[ \t]+{re.escape(name)}\b", hstgate.strip_comments(text), re.M))
+
+
+def unit_pragma(text: str, name: str, value: str) -> str | None:
+    """`#pragma <name> <value>` at file scope, right after the header line; None when the source already sets it."""
+    if has_pragma(text, name):
+        return None
+    lines = text.split("\n")
+    lines[1:1] = [f"#pragma {name}{value}" if value.startswith("(") else f"#pragma {name} {value}"]
+    return "\n".join(lines)
+
+
+def steer_pragma(text: str, symbol: str, name: str, value: str = "off", origin: str = "") -> str | None:
+    """The source with `#pragma <name> <value>` scoped to the function `symbol` (`#pragma push` before its signature,
+    `#pragma pop` after its closing brace) and the declaration `steer=pragma:<name>` in a one-line comment after the
+    header line. When the function cannot be located the push/pop pair wraps everything after the leading comments.
+    None when the source already sets that pragma or already uses push/pop."""
+    if has_pragma(text, name) or has_pragma(text, "push") or has_pragma(text, "pop"):
+        return None
+    lines = text.split("\n")
+    span = function_span(text, symbol)
+    if span is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines.append("#pragma pop")
+        lines.append("")
+        code = _code_lines(text)
+        top = next((i for i in range(1, len(code)) if code[i].strip()), len(lines) - 2)   # first line of code
+        lines[top:top] = ["#pragma push", f"#pragma {name} {value}"]
+    else:
+        first, last = span
+        lines[last + 1:last + 1] = ["#pragma pop"]
+        lines[first:first] = ["#pragma push", f"#pragma {name} {value}"]
+    why = f"; {origin}" if origin else ""
+    lines[1:1] = [f"/* steer=pragma:{name} ({value}, scoped to {symbol} by #pragma push/pop{why}) */"]
+    return "\n".join(lines)
+
+
 def write_accepted(tag: str, key: tuple[str, int], path: Path, origin: str) -> int:
     module, start = key
     dest_dir = M.ROOT / "src" / SRC_DIRS[module]
@@ -680,10 +779,16 @@ def run_scored(cmd: list[str], files: list[Path], part_dir: Path, ends: dict, ow
     """Compile and score files; returns {resolved path: alignment score}."""
     results = {}
     crashed = unscored = 0
-    for c in range(0, len(files), 400):
-        todo = [str(p) for p in files[c:c + 400]]
+    # at most 400 files and about 24,000 characters of paths per hstmatch run (Windows caps a command line at 32,767)
+    chunks: list[list[str]] = [[]]
+    for p in files:
+        s = str(p)
+        if chunks[-1] and (len(chunks[-1]) >= 400 or sum(len(x) + 1 for x in chunks[-1]) + len(s) > 24_000):
+            chunks.append([])
+        chunks[-1].append(s)
+    for c, todo in enumerate(chunks if files else []):
         for attempt in range(2):
-            part = part_dir / f"summary-{c // 400}-{attempt}.json"
+            part = part_dir / f"summary-{c}-{attempt}.json"
             done = subprocess.run(cmd + [str(part)] + todo, stdout=subprocess.DEVNULL)
             if done.returncode == 3 or not part.exists():
                 raise SystemExit(f"hstmatch stopped (exit {done.returncode}): wsl.exe or the compiler machinery failed; "

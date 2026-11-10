@@ -81,7 +81,13 @@ GCC_PROFILE_NAMES = (frozenset(f"gcc{v}{x}-{o}" for v in ("131", "171") for o in
                      # "psp-gcc-4.0.2x"); it assembles with the Sony 1.3.1 kit's assembler through the kit's sony-as
                      # wrapper. Only for the functions a later Sony compiler built (duplicated epilogues, tail calls,
                      # no lhu narrowing); the gcc131/gcc171 profiles stay the defaults.
-                     | frozenset(f"gcc402x-{o}" for o in ("O0", "O1", "O2", "O3", "Os")))
+                     | frozenset(f"gcc402x-{o}" for o in ("O0", "O1", "O2", "O3", "Os"))
+                     # gcc404x-*: SDK-ONLY profile (owner decision 2026-11-09): psp-gcc-4.0.4x, GCC 4.0.4 + the pspdev
+                     # Allegrex patch + lbp-decomp's four measured Allegrex changes (tuning, scheduling, ins-from-zero,
+                     # FPU transfer), the kit lbp-decomp adopted (its toolchain/gcc4/PROVENANCE.json, build
+                     # "psp-gcc-4.0.4x"); the only profile that emits retail's `ins rt,$zero,pos,size`. tools/hstgate.py
+                     # refuses it outside the Sony SDK units of data/sdk-gcc4-units.json (game code keeps mwccpsp).
+                     | frozenset(f"gcc404x-{o}" for o in ("O0", "O1", "O2", "O3", "Os")))
 GCC4_PROFILE_KIT = "gcc4_home"    # profile records of the gcc402x-* profiles name their kit directory
 _gcc_profiles: dict | None = None
 
@@ -104,7 +110,7 @@ def gcc_home() -> str:
 
 
 def gcc4_home() -> str | None:
-    """The gcc4_home setting, or None when it is not configured (only cc=gcc402x-* sources need it)."""
+    """The gcc4_home setting, or None when it is not configured (only cc=gcc402x-*/gcc404x-* sources need it)."""
     return CFG.get("gcc4_home") and CFG.wsl_path("gcc4_home")
 
 
@@ -120,6 +126,10 @@ def gcc_profiles() -> dict:
                               for v in b})
         g4 = gcc4_home()
         _gcc_profiles.update({f"gcc402x-{o}": {"driver": f"{g4}/psp-gcc-4.0.2x/bin/psp-gcc" if g4 else None,
+                                               "B": None, "kit": GCC4_PROFILE_KIT,
+                                               "flags": f"-{o} -G0 -fno-merge-constants -mpreferred-stack-boundary=4"}
+                              for o in ("O0", "O1", "O2", "O3", "Os")})
+        _gcc_profiles.update({f"gcc404x-{o}": {"driver": f"{g4}/psp-gcc-4.0.4x/bin/psp-gcc" if g4 else None,
                                                "B": None, "kit": GCC4_PROFILE_KIT,
                                                "flags": f"-{o} -G0 -fno-merge-constants -mpreferred-stack-boundary=4"}
                               for o in ("O0", "O1", "O2", "O3", "Os")})

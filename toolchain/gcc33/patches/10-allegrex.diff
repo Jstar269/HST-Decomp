@@ -1,0 +1,461 @@
+--- a/config.sub
++++ b/config.sub
+@@ -250,6 +250,7 @@
+ 	| mipsisa64sb1 | mipsisa64sb1el \
+ 	| mipsisa64sr71k | mipsisa64sr71kel \
+ 	| mipstx39 | mipstx39el \
++	| mipsallegrex | mipsallegrexel \
+ 	| mn10200 | mn10300 \
+ 	| msp430 \
+ 	| ns16k | ns32k \
+@@ -322,6 +323,7 @@
+ 	| mipsisa64sb1-* | mipsisa64sb1el-* \
+ 	| mipsisa64sr71k-* | mipsisa64sr71kel-* \
+ 	| mipstx39-* | mipstx39el-* \
++	| mipsallegrex-* | mipsallegrexel-* \
+ 	| msp430-* \
+ 	| none-* | np1-* | nv1-* | ns16k-* | ns32k-* \
+ 	| orion-* \
+@@ -630,6 +632,10 @@
+ 		basic_machine=m68k-atari
+ 		os=-mint
+ 		;;
++	psp)
++		basic_machine=mipsallegrexel-psp
++		os=-elf
++		;;
+ 	mips3*-*)
+ 		basic_machine=`echo $basic_machine | sed -e 's/mips3/mips64/'`
+ 		;;
+--- a/gcc/config/mips/allegrex.md
++++ b/gcc/config/mips/allegrex.md
+@@ -0,0 +1,149 @@
++;; Sony Allegrex (PSP) instructions for GCC 3.3.3.
++;; Copyright (C) 2026 hst-decomp contributors.
++;;
++;; This file is part of GCC.
++;;
++;; GCC is free software; you can redistribute it and/or modify
++;; it under the terms of the GNU General Public License as published by
++;; the Free Software Foundation; either version 2, or (at your option)
++;; any later version.
++;;
++;; GCC is distributed in the hope that it will be useful,
++;; but WITHOUT ANY WARRANTY; without even the implied warranty of
++;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++;; GNU General Public License for more details.
++;;
++;; You should have received a copy of the GNU General Public License
++;; along with GCC; see the file COPYING.  If not, write to
++;; the Free Software Foundation, 59 Temple Place - Suite 330,
++;; Boston, MA 02111-1307, USA.
++;;
++;; Written for the hst-decomp project from the Allegrex instruction set and
++;; measurements of the Sony SDK compiler's output; see toolchain/gcc33 in
++;; that project for the measurement rounds.
++
++;; Sign extension: seb, seh.
++
++(define_insn "extendqisi2_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(sign_extend:SI (match_operand:QI 1 "register_operand" "d")))]
++  "TARGET_ALLEGREX"
++  "seb\t%0,%1"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++(define_insn "extendhisi2_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(sign_extend:SI (match_operand:HI 1 "register_operand" "d")))]
++  "TARGET_ALLEGREX"
++  "seh\t%0,%1"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++;; Minimum and maximum.
++
++(define_expand "sminsi3"
++  [(set (match_operand:SI 0 "register_operand" "")
++	(smin:SI (match_operand:SI 1 "register_operand" "")
++		 (match_operand:SI 2 "register_operand" "")))]
++  "TARGET_ALLEGREX"
++  "")
++
++(define_insn "sminsi3_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(smin:SI (match_operand:SI 1 "register_operand" "d")
++		 (match_operand:SI 2 "register_operand" "d")))]
++  "TARGET_ALLEGREX"
++  "min\t%0,%1,%2"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++(define_expand "smaxsi3"
++  [(set (match_operand:SI 0 "register_operand" "")
++	(smax:SI (match_operand:SI 1 "register_operand" "")
++		 (match_operand:SI 2 "register_operand" "")))]
++  "TARGET_ALLEGREX"
++  "")
++
++(define_insn "smaxsi3_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(smax:SI (match_operand:SI 1 "register_operand" "d")
++		 (match_operand:SI 2 "register_operand" "d")))]
++  "TARGET_ALLEGREX"
++  "max\t%0,%1,%2"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++;; Absolute value: negate, then the maximum of the two.
++
++(define_expand "abssi2_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "")
++	(abs:SI (match_operand:SI 1 "register_operand" "")))]
++  "TARGET_ALLEGREX"
++  "
++{
++  rtx t = gen_reg_rtx (SImode);
++  emit_insn (gen_negsi2 (t, operands[1]));
++  emit_insn (gen_smaxsi3 (operands[0], operands[1], t));
++  DONE;
++}")
++
++;; Bit-field extract and insert (-mext).
++
++(define_insn "extzv_allegrex_insn"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(zero_extract:SI (match_operand:SI 1 "register_operand" "d")
++			 (match_operand:SI 2 "const_int_operand" "")
++			 (match_operand:SI 3 "const_int_operand" "")))]
++  "TARGET_ALLEGREX_EXT"
++  "ext\t%0,%1,%3,%2"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++(define_insn "insv_allegrex_insn"
++  [(set (zero_extract:SI (match_operand:SI 0 "register_operand" "+d")
++			 (match_operand:SI 1 "const_int_operand" "")
++			 (match_operand:SI 2 "const_int_operand" ""))
++	(match_operand:SI 3 "reg_or_0_operand" "dJ"))]
++  "TARGET_ALLEGREX_EXT"
++  "ins\t%0,%z3,%2,%1"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++;; x & (2**n - 1) for n > 16, which andi cannot encode.
++(define_insn "*andsi3_allegrex_ext"
++  [(set (match_operand:SI 0 "register_operand" "=d")
++	(and:SI (match_operand:SI 1 "register_operand" "d")
++		(match_operand:SI 2 "const_int_operand" "")))]
++  "TARGET_ALLEGREX_EXT && allegrex_low_mask_p (operands[2])"
++  "*
++{
++  operands[3] = GEN_INT (exact_log2 ((INTVAL (operands[2]) & 0xffffffff) + 1));
++  return \"ext\\t%0,%1,0,%3\";
++}"
++  [(set_attr "type"	"arith")
++   (set_attr "mode"	"SI")])
++
++;; Multiply-accumulate (-mmadd).
++
++(define_insn "maddsi_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "+l")
++	(plus:SI (mult:SI (match_operand:SI 1 "register_operand" "d")
++			  (match_operand:SI 2 "register_operand" "d"))
++		 (match_dup 0)))
++   (clobber (match_scratch:SI 3 "=h"))]
++  "TARGET_ALLEGREX_MADD"
++  "madd\t%1,%2"
++  [(set_attr "type"	"imadd")
++   (set_attr "mode"	"SI")])
++
++(define_insn "msubsi_allegrex"
++  [(set (match_operand:SI 0 "register_operand" "+l")
++	(minus:SI (match_dup 0)
++		  (mult:SI (match_operand:SI 1 "register_operand" "d")
++			   (match_operand:SI 2 "register_operand" "d"))))
++   (clobber (match_scratch:SI 3 "=h"))]
++  "TARGET_ALLEGREX_MADD"
++  "msub\t%1,%2"
++  [(set_attr "type"	"imadd")
++   (set_attr "mode"	"SI")])
+--- a/gcc/config/mips/mips-protos.h
++++ b/gcc/config/mips/mips-protos.h
+@@ -132,6 +132,7 @@
+ 							 enum reg_class));
+ 
+ extern int		pic_address_needs_scratch PARAMS ((rtx));
++extern int		allegrex_low_mask_p PARAMS ((rtx));
+ extern int		se_arith_operand PARAMS ((rtx, enum machine_mode));
+ extern int		coprocessor_operand PARAMS ((rtx, enum machine_mode));
+ extern int		coprocessor2_operand PARAMS ((rtx, enum machine_mode));
+--- a/gcc/config/mips/mips.c
++++ b/gcc/config/mips/mips.c
+@@ -591,6 +591,7 @@
+ 
+   /* MIPS II */
+   { "r6000", PROCESSOR_R6000, 2 },
++  { "allegrex", PROCESSOR_ALLEGREX, 2 },
+ 
+   /* MIPS III */
+   { "r4000", PROCESSOR_R4000, 3 },
+@@ -672,6 +673,35 @@
+ /* Return truth value of whether OP can be used as an operands
+    where a register or 16 bit unsigned integer is needed.  */
+ 
++/* Return nonzero if OP is a CONST_INT of the form 2**n - 1 with
++   16 < n < 32: a mask Allegrex's ext can apply and andi cannot.  */
++
++int
++allegrex_low_mask_p (op)
++     rtx op;
++{
++  unsigned HOST_WIDE_INT v;
++  int n;
++
++  if (GET_CODE (op) != CONST_INT)
++    return 0;
++  v = INTVAL (op) & 0xffffffff;
++  n = exact_log2 (v + 1);
++  return n > 16 && n < 32;
++}
++
++/* Return truth value of whether OP can be the second operand of andsi3.  */
++
++int
++and_operand (op, mode)
++     rtx op;
++     enum machine_mode mode;
++{
++  if (TARGET_ALLEGREX_EXT && allegrex_low_mask_p (op))
++    return 1;
++  return uns_arith_operand (op, mode);
++}
++
+ int
+ uns_arith_operand (op, mode)
+      rtx op;
+--- a/gcc/config/mips/mips.h
++++ b/gcc/config/mips/mips.h
+@@ -76,7 +76,8 @@
+   PROCESSOR_R5KC,
+   PROCESSOR_R20KC,
+   PROCESSOR_SR71000,
+-  PROCESSOR_SB1
++  PROCESSOR_SB1,
++  PROCESSOR_ALLEGREX
+ };
+ 
+ /* Recast the cpu class to be the cpu attribute.  */
+@@ -239,6 +240,9 @@
+ 					   multiply-add operations.  */
+ #define MASK_BRANCHLIKELY  0x02000000   /* Generate Branch Likely
+ 					   instructions.  */
++#define MASK_ALLEGREX_EXT  0x04000000	/* Allegrex: use ext/ins.  */
++#define MASK_ALLEGREX_MADD 0x08000000	/* Allegrex: use madd/msub.  */
++#define MASK_ALLEGREX_ULSW 0x10000000	/* Allegrex: unaligned lw/sw.  */
+ 
+ 					/* Debug switches, not documented */
+ #define MASK_DEBUG	0		/* unused */
+@@ -321,6 +325,9 @@
+ #define TARGET_DOUBLE_FLOAT	(! TARGET_SINGLE_FLOAT)
+ 
+ #define TARGET_MAD		(target_flags & MASK_MAD)
++#define TARGET_ALLEGREX_EXT	(TARGET_ALLEGREX && (target_flags & MASK_ALLEGREX_EXT))
++#define TARGET_ALLEGREX_MADD	(TARGET_ALLEGREX && (target_flags & MASK_ALLEGREX_MADD))
++#define TARGET_ALLEGREX_ULSW	(TARGET_ALLEGREX && (target_flags & MASK_ALLEGREX_ULSW))
+ 
+ #define TARGET_FUSED_MADD	(! (target_flags & MASK_NO_FUSED_MADD))
+ 
+@@ -365,6 +372,7 @@
+ #define TARGET_MIPS5500             (mips_arch == PROCESSOR_R5500)
+ #define TARGET_SB1                  (mips_arch == PROCESSOR_SB1)
+ #define TARGET_SR71K                (mips_arch == PROCESSOR_SR71000)
++#define TARGET_ALLEGREX             (mips_arch == PROCESSOR_ALLEGREX)
+ 
+ /* Scheduling target defines.  */
+ #define TUNE_MIPS3000               (mips_tune == PROCESSOR_R3000)
+@@ -376,6 +384,7 @@
+ #define TUNE_MIPS6000               (mips_tune == PROCESSOR_R6000)
+ #define TUNE_SB1                    (mips_tune == PROCESSOR_SB1)
+ #define TUNE_SR71K                  (mips_tune == PROCESSOR_SR71000)
++#define TUNE_ALLEGREX               (mips_tune == PROCESSOR_ALLEGREX)
+ 
+ /* Define preprocessor macros for the -march and -mtune options.
+    PREFIX is either _MIPS_ARCH or _MIPS_TUNE, INFO is the selected
+@@ -608,6 +617,18 @@
+      N_("Use multiply accumulate")},					\
+   {"no-mad",		 -MASK_MAD,					\
+      N_("Don't use multiply accumulate")},				\
++  {"ulsw",		  MASK_ALLEGREX_ULSW,				\
++     NULL},								\
++  {"no-ulsw",		 -MASK_ALLEGREX_ULSW,				\
++     NULL},								\
++  {"ext",		  MASK_ALLEGREX_EXT,				\
++     NULL},								\
++  {"no-ext",		 -MASK_ALLEGREX_EXT,				\
++     NULL},								\
++  {"madd",		  MASK_ALLEGREX_MADD,				\
++     NULL},								\
++  {"no-madd",		 -MASK_ALLEGREX_MADD,				\
++     NULL},								\
+   {"no-fused-madd",       MASK_NO_FUSED_MADD,                           \
+      N_("Don't generate fused multiply/add instructions")},		\
+   {"fused-madd",         -MASK_NO_FUSED_MADD,                           \
+@@ -811,7 +832,7 @@
+ 				 && !TARGET_MIPS16)
+ 
+ /* ISA has just the integer condition move instructions (movn,movz) */
+-#define ISA_HAS_INT_CONDMOVE     0
++#define ISA_HAS_INT_CONDMOVE     (TARGET_ALLEGREX)
+ 
+ /* ISA has the mips4 FP condition code instructions: FP-compare to CC,
+    branch on CC, and move (both FP and non-FP) on CC.  */
+@@ -2571,7 +2592,7 @@
+ #define OUTGOING_REG_PARM_STACK_SPACE
+ 
+ #define STACK_BOUNDARY \
+-  ((mips_abi == ABI_32 || mips_abi == ABI_O64 || mips_abi == ABI_EABI) \
++  ((mips_abi == ABI_32 || mips_abi == ABI_O64 || (mips_abi == ABI_EABI && !TARGET_ALLEGREX)) \
+    ? 64 : 128)
+ 
+ /* Make sure 4 words are always allocated on the stack.  */
+@@ -2874,7 +2895,7 @@
+ /* Treat LOC as a byte offset from the stack pointer and round it up
+    to the next fully-aligned offset.  */
+ #define MIPS_STACK_ALIGN(LOC)						\
+-  ((mips_abi == ABI_32 || mips_abi == ABI_O64 || mips_abi == ABI_EABI)	\
++  ((mips_abi == ABI_32 || mips_abi == ABI_O64 || (mips_abi == ABI_EABI && !TARGET_ALLEGREX))	\
+    ? ((LOC) + 7) & ~7							\
+    : ((LOC) + 15) & ~15)
+ 
+@@ -3795,6 +3816,7 @@
+ 
+ #define PREDICATE_CODES							\
+   {"uns_arith_operand",		{ REG, CONST_INT, SUBREG }},		\
++  {"and_operand",		{ REG, CONST_INT, SUBREG }},		\
+   {"arith_operand",		{ REG, CONST_INT, SUBREG }},		\
+   {"arith32_operand",		{ REG, CONST_INT, SUBREG }},		\
+   {"reg_or_0_operand",		{ REG, CONST_INT, CONST_DOUBLE, SUBREG }}, \
+--- a/gcc/config/mips/mips.md
++++ b/gcc/config/mips/mips.md
+@@ -125,7 +125,7 @@
+ 
+ ;; ??? Fix everything that tests this attribute.
+ (define_attr "cpu"
+-  "default,r3000,r3900,r6000,r4000,r4100,r4111,r4120,r4300,r4600,r4650,r5000,r5400,r5500,r8000,sr71000,r4kc,r5kc,r20kc"
++  "default,r3000,r3900,r6000,r4000,r4100,r4111,r4120,r4300,r4600,r4650,r5000,r5400,r5500,r8000,sr71000,r4kc,r5kc,r20kc,sb1,allegrex"
+   (const (symbol_ref "mips_cpu_attr")))
+ 
+ ;; Does the instruction have a mandatory delay slot?
+@@ -542,6 +542,7 @@
+ (include "5400.md")
+ (include "5500.md")
+ (include "sr71k.md")
++(include "allegrex.md")
+ 
+ 
+ ;;
+@@ -3248,7 +3249,20 @@
+ ;; Do not use the integer abs macro instruction, since that signals an
+ ;; exception on -2147483648 (sigh).
+ 
+-(define_insn "abssi2"
++(define_expand "abssi2"
++  [(set (match_operand:SI 0 "register_operand" "")
++	(abs:SI (match_operand:SI 1 "register_operand" "")))]
++  "!TARGET_MIPS16"
++  "
++{
++  if (TARGET_ALLEGREX)
++    emit_insn (gen_abssi2_allegrex (operands[0], operands[1]));
++  else
++    emit_insn (gen_abssi2_internal (operands[0], operands[1]));
++  DONE;
++}")
++
++(define_insn "abssi2_internal"
+   [(set (match_operand:SI 0 "register_operand" "=d")
+ 	(abs:SI (match_operand:SI 1 "register_operand" "d")))]
+   "!TARGET_MIPS16"
+@@ -3539,7 +3553,7 @@
+ (define_expand "andsi3"
+   [(set (match_operand:SI 0 "register_operand" "=d,d")
+ 	(and:SI (match_operand:SI 1 "uns_arith_operand" "%d,d")
+-		(match_operand:SI 2 "uns_arith_operand" "d,K")))]
++		(match_operand:SI 2 "and_operand" "d,K")))]
+   ""
+   "
+ {
+@@ -4383,6 +4397,12 @@
+   if (optimize && GET_CODE (operands[1]) == MEM)
+     operands[1] = force_not_mem (operands[1]);
+ 
++  if (TARGET_ALLEGREX && GET_CODE (operands[1]) != MEM)
++    {
++      emit_insn (gen_extendhisi2_allegrex (operands[0], operands[1]));
++      DONE;
++    }
++
+   if (GET_CODE (operands[1]) != MEM)
+     {
+       rtx op1   = gen_lowpart (SImode, operands[1]);
+@@ -4445,6 +4465,12 @@
+   if (optimize && GET_CODE (operands[1]) == MEM)
+     operands[1] = force_not_mem (operands[1]);
+ 
++  if (TARGET_ALLEGREX && GET_CODE (operands[1]) != MEM)
++    {
++      emit_insn (gen_extendqisi2_allegrex (operands[0], operands[1]));
++      DONE;
++    }
++
+   if (GET_CODE (operands[1]) != MEM)
+     {
+       rtx op1   = gen_lowpart (SImode, operands[1]);
+--- a/gcc/config/mips/psp.h
++++ b/gcc/config/mips/psp.h
+@@ -0,0 +1,28 @@
++/* Target definitions for Sony's PlayStation Portable (Allegrex CPU), for the
++   hst-decomp reconstruction of the Sony SDK's psp-gcc 3.3.3 code generation.
++   Copyright (C) 2026 hst-decomp contributors.
++
++This file is part of GCC.
++
++GCC is free software; you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation; either version 2, or (at your option)
++any later version.
++
++GCC is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with GCC; see the file COPYING.  If not, write to
++the Free Software Foundation, 59 Temple Place - Suite 330,
++Boston, MA 02111-1307, USA.  */
++
++#undef SUBTARGET_CPP_SPEC
++#define SUBTARGET_CPP_SPEC "-D__SCE__ -D__psp__ -D__psp_gcc__=0x030303"
++
++/* The Sony assembler of the 1.3.1 kit is driven through a wrapper; no
++   extra assembler options.  */
++#undef SUBTARGET_ASM_SPEC
++#define SUBTARGET_ASM_SPEC ""
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1929,6 +1929,12 @@
+ 	target_cpu_default="MASK_64BIT|MASK_FLOAT64|MASK_GAS"
+ 	tm_defines="MIPS_ISA_DEFAULT=64 MIPS_CPU_STRING_DEFAULT=\\\"sb1\\\" MIPS_ABI_DEFAULT=ABI_O64"
+ 	;;
++mipsallegrex-*-elf* | mipsallegrexel-*-elf*)
++	tm_file="${tm_file} mips/elf.h mips/psp.h"
++	tmake_file=mips/t-elf
++	target_cpu_default="MASK_SINGLE_FLOAT|MASK_GAS"
++	tm_defines="MIPS_ISA_DEFAULT=2 MIPS_CPU_STRING_DEFAULT=\\\"allegrex\\\" MIPS_ABI_DEFAULT=ABI_EABI"
++	;;
+ mips-*-elf* | mipsel-*-elf*)
+ 	tm_file="${tm_file} mips/elf.h"
+ 	tmake_file=mips/t-elf

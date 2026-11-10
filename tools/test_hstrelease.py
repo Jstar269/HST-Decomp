@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Synthetic tests for the publish tool's never-lower guard (hstrelease.py) and the generated figure blocks
-(hstprogress.py). No game bytes: every figure and document here is made up."""
+"""Synthetic tests for the publish tool's never-lower guard and licence-compliance gate (hstrelease.py) and the
+generated figure blocks (hstprogress.py). No game bytes: every figure and document here is made up."""
 from __future__ import annotations
 
+import contextlib
 import copy
+import io
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstprogress as P
@@ -174,6 +177,88 @@ class GuardTests(unittest.TestCase):
     def test_a_file_never_published_has_no_baseline(self) -> None:
         self.assertEqual(R.guard({"progress.json": None, "docs/milestones.json": None,
                                   "docs/objdiff-report.json": None}, published()), [])
+
+
+def fake_reuse(root: Path, body: str) -> Path:
+    """A tree whose tools/hstreuse.py is the given stand-in script (no game bytes, no real check)."""
+    (root / "tools").mkdir(parents=True, exist_ok=True)
+    (root / "tools" / "hstreuse.py").write_text("import sys\n" + body, encoding="utf-8")
+    return root
+
+
+class ReuseGateTests(unittest.TestCase):
+    """The publish refuses unless `hstreuse.py check` is COMPLIANT (the 2026-11-07 publish shipped four newlib-derived
+    sources without their licence annotation because the check was only printed)."""
+
+    def gate(self, body: str) -> str | None:
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            tree = fake_reuse(Path(d), body)
+            try:
+                R.reuse_check(tree, "the synthetic tree")
+            except R.Refused as e:
+                return str(e)
+        return None
+
+    def test_compliant_passes(self) -> None:
+        self.assertIsNone(self.gate("print('tracked files: 3; covered: 3')\nprint('hstreuse check: COMPLIANT')\n"))
+
+    def test_problems_refuse_with_their_lines(self) -> None:
+        refused = self.gate("print('PROBLEM: src/a/sinf.c is newlib-derived but its effective annotation has no "
+                            "newlib licence')\nprint('PROBLEM: the generated newlib block of REUSE.toml is stale')\n"
+                            "print('hstreuse check: 2 problem(s)')\nsys.exit(1)\n")
+        self.assertIsNotNone(refused)
+        self.assertIn("not COMPLIANT in the synthetic tree", refused)
+        self.assertIn("PROBLEM: src/a/sinf.c is newlib-derived but its effective annotation has no newlib licence",
+                      refused)
+        self.assertIn("PROBLEM: the generated newlib block of REUSE.toml is stale", refused)
+
+    def test_fails_closed(self) -> None:
+        cases = {"a problem with exit 0": "print('PROBLEM: x')\nprint('hstreuse check: COMPLIANT')\n",
+                 "a non-zero exit": "print('hstreuse check: COMPLIANT')\nsys.exit(1)\n",
+                 "no verdict": "print('tracked files: 0')\n",
+                 "a crash": "raise RuntimeError('REUSE.toml unreadable')\n",
+                 "a verdict that is only quoted": "print('expected hstreuse check: COMPLIANT, got 1 problem(s)')\n"}
+        for name, body in cases.items():
+            with self.subTest(name):
+                self.assertIsNotNone(self.gate(body))
+        self.assertIn("REUSE.toml unreadable", self.gate(cases["a crash"]))
+
+    def run_main(self, refuse_in: str | None) -> tuple[int, list[str]]:
+        """hstrelease.main() as a dry run with every step stubbed; the order in which the steps ran."""
+        calls: list[str] = []
+
+        def reuse(tree: Path, what: str) -> None:
+            calls.append(f"reuse:{tree.name}")
+            if tree.name == refuse_in:
+                raise R.Refused("hstreuse.py check is not COMPLIANT")
+
+        stubs = {"git": lambda cwd, *a, check=True: "public\n",
+                 "public_worktree": lambda repo: Path("pub"),
+                 "push_preparation": lambda repo, m, apply: calls.append("prep") or "0" * 40,
+                 "clean_worktree": lambda repo, base, tmp, date: calls.append("clean") or Path("clean"),
+                 "never_lower": lambda public, clean: calls.append("guard"),
+                 "sync": lambda public, clean, tmp, m, apply: calls.append("sync") or (Path("synced"), []),
+                 "match": lambda tree, sources, parallel: calls.append("match"),
+                 "push": lambda public: calls.append("push"),
+                 "reuse_check": reuse}
+        with contextlib.ExitStack() as stack:
+            for name, stub in stubs.items():
+                stack.enter_context(mock.patch.object(R, name, stub))
+            stack.enter_context(mock.patch.object(sys, "argv", ["hstrelease.py"]))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            return R.main(), calls
+
+    def test_main_checks_the_clean_and_the_synced_tree(self) -> None:
+        self.assertEqual(self.run_main(None), (0, ["prep", "clean", "reuse:clean", "guard", "sync", "reuse:synced",
+                                                   "match"]))
+
+    def test_a_non_compliant_commit_is_never_synced(self) -> None:
+        self.assertEqual(self.run_main("clean"), (1, ["prep", "clean", "reuse:clean"]))
+
+    def test_a_non_compliant_public_tree_is_never_matched_or_pushed(self) -> None:
+        self.assertEqual(self.run_main("synced"), (1, ["prep", "clean", "reuse:clean", "guard", "sync",
+                                                       "reuse:synced"]))
 
 
 def fig() -> dict:

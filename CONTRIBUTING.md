@@ -31,7 +31,8 @@ source is copied into it.
   - PSPDEV binutils (`psp-ld`, `psp-objcopy`, `psp-objdump`) from a [pspdev release](https://github.com/pspdev/pspdev/releases);
   - only for the few `cc=gcc402x-*` sources: the open-source GCC 4.0.2 PSP build that
     [lbp-psp-decomp](https://github.com/Jstar269/lbp-psp-decomp) builds from GNU and pspdev sources
-    (`toolchain/gcc4/` there).
+    (`toolchain/gcc4/` there); the same kit's GCC 4.0.4 build `psp-gcc-4.0.4x` for the `cc=gcc404x-*` sources
+    (Sony SDK code only).
 
   [Setup](docs/GUIDE.md#setup) gives the directory layout the tools expect and the `hst-config.json` keys
   (`mwcc_native`, `gcc_home`, `gcc4_home`, `pspdev_bin`, `campaign_root`).
@@ -160,7 +161,9 @@ grep -l "start=0x<addr>" src/*/* wip/*
 `module`, `start`, `end` and `symbol` are required (`symbol` must be the name your source defines for the function).
 `lang` is `c99` or `c++`. Optional: `cc=<profile>` (absent means MWCC build 219; GCC sources say `cc=gcc171-O2`,
 `cc=gcc171-Os` or, for unoptimized SDK code, `cc=gcc171-O0`; `cc=gcc402x-O2`/`-Os`/... is a secondary profile for
-functions a later Sony compiler built, used only when no gcc131/gcc171 profile matches), the section placement keys
+functions a later Sony compiler built, used only when no gcc131/gcc171 profile matches; `cc=gcc404x-*` is for the
+Sony SDK functions that use `ins rt,$zero` and is refused outside the SDK units of `data/sdk-gcc4-units.json`), the
+section placement keys
 above, `asm=vfpu` (inline
 VFPU asm, see the ground rules; the source then carries a line `/* Original inline VFPU asm: <reason> */` after the
 note) and the experimental `extra=`.

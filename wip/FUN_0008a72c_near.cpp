@@ -125,8 +125,9 @@ extern "C" int FUN_0008a72c(char *param_1, int param_2)
         if (bVar4 || bVar8) {
             bVar4_2 = 0;
             if (DAT_003386b8 != 0 && FUN_000fb7b8(DAT_00338c20) != 0) {
-                bVar4_2 = 0;
-            } else if (*(unsigned char *)(param_1 + 0x4c) == 0) {
+                return 0;
+            }
+            if (*(unsigned char *)(param_1 + 0x4c) == 0) {
                 switch (*(int *)(param_1 + 0x3c)) {
                 case 5:
                 case 7:
@@ -172,3 +173,8 @@ extern "C" int FUN_0008a72c(char *param_1, int param_2)
 // - single compound boolean (A || B) && C (loses dual lbu branch structure)
 // - separate temporary ok variable (adds register allocation frame overhead)
 // near miss from lane dsn6 (unreviewed)
+// update 2026-11-08 (chat-1): early `return 0;` inside the DAT_003386b8/FUN_000fb7b8 arm gives retail the beqzl/lbu
+// pair and the bnezl+andi duplicate; only the branch TARGET differs now (ours b 0x8aae8, retail b 0x8aa84 = the
+// bVar4_2 test, i.e. retail rejoins the test with a folded 0 instead of returning). goto/nested-if/empty-then forms
+// collapse the whole block (247/249 words, 76 differ). 3 -> 1 differing word.
+// improved by lane fb-mission (unreviewed): 3 -> 1 differing words

@@ -14,12 +14,15 @@ Run it from the maintainers' checkout of `full`. The steps (each refuses, exit 1
     must not reach it), with the git-ignored inputs copied in: hst-config.json, try/build/*report.json,
     try/port-report.json and try/port-private-report.json. Without them T2/T3 and the portable-source milestone
     silently drop to 0, so a missing input refuses. Then `hstprogress.py --write` there, which also rewrites the
-    generated figure blocks (hstprogress.BLOCK_FILES), and `hstprogress.py --check-readme`.
+    generated figure blocks (hstprogress.BLOCK_FILES), and `hstprogress.py --check-readme`. Then licence
+    compliance: `hstreuse.py check` there must be COMPLIANT (any PROBLEM line, a non-zero exit or a missing verdict
+    refuses), so nothing is synced or committed on the public branch from a commit that is not.
  3. Never-lower guard: every figure of progress.json, docs/milestones.json and docs/objdiff-report.json is compared
     with the last published one (HEAD of the public worktree); a figure that goes down or becomes null refuses.
  4. `hstpublic.py sync` from the clean worktree into the public worktree (the dry run mirrors into a detached
-    temporary worktree of the public HEAD instead and commits nothing), then `hstmatch.py` on every added or modified
-    src/**/*.c|cpp of the public tree: every one must be EXACT.
+    temporary worktree of the public HEAD instead and commits nothing), then `hstreuse.py check` on the synced public
+    tree (what is pushed) must be COMPLIANT too, then `hstmatch.py` on every added or modified src/**/*.c|cpp of the
+    public tree: every one must be EXACT.
  5. --apply/--push: the refreshed figure files are committed on full too (refused if full's copies changed meanwhile).
  6. --push: `git push origin public:main`, then `git ls-remote origin main` must equal the public HEAD; prints the
     `gh run list` command for the Progress report workflow.
@@ -290,6 +293,23 @@ def clean_worktree(repo: Path, commit: str, tmp: Path, date: str) -> Path:
     return clean
 
 
+REUSE_VERDICT = "hstreuse check: COMPLIANT"
+
+
+def reuse_check(tree: Path, what: str) -> None:
+    """Steps 2 and 4: `tools/hstreuse.py check` of `tree` (its own copy, which checks the files git tracks there) must
+    pass. Fails closed: a PROBLEM line, a non-zero exit or a missing COMPLIANT verdict refuses."""
+    rc, out = run([sys.executable, "tools/hstreuse.py", "check"], tree)
+    problems = [ln for ln in out.splitlines() if ln.startswith("PROBLEM:")]
+    verdict = any(ln.strip() == REUSE_VERDICT for ln in out.splitlines())
+    if rc or problems or not verdict:
+        detail = problems or [f"exit {rc}, no '{REUSE_VERDICT}' line; last output:"] + out.splitlines()[-10:]
+        raise Refused(f"hstreuse.py check is not COMPLIANT in {what}:\n  " + "\n  ".join(detail)
+                      + "\nFix the licence annotations (REUSE.toml; `hstreuse.py newlib --write` for the generated "
+                        "newlib block) on full before publishing.")
+    print(f"licence compliance: {what} is COMPLIANT")
+
+
 def never_lower(public: Path, clean: Path) -> None:
     """Step 3."""
     published = {}
@@ -440,12 +460,14 @@ def main() -> int:
         prepared = apply
         base = push_preparation(repo, args.message, apply)
         print(f"commit to publish: {git(repo, 'log', '-1', '--oneline', base).strip()}")
-        step(2, "clean worktree, git-ignored inputs, hstprogress.py --write and --check-readme")
+        step(2, "clean worktree, git-ignored inputs, hstprogress.py --write and --check-readme, hstreuse.py check")
         clean = clean_worktree(repo, base, tmp, args.date)
+        reuse_check(clean, "the clean worktree")
         step(3, "never-lower guard against the published figures")
         never_lower(public, clean)
-        step(4, "sync the public tree and match its new sources")
+        step(4, "sync the public tree, check its licence compliance and match its new sources")
         tree, sources = sync(public, clean, tmp, args.message, apply)
+        reuse_check(tree, "the synced public tree")
         match(tree, sources, args.parallel)
         if apply:
             step(5, "commit the refreshed figures on full")

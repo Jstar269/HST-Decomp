@@ -63,8 +63,10 @@ repository. Where the brief and this file disagree, the stricter rule applies.
   worked around; `hstpromote.py` refuses a promotion that loses coverage, and only an explicit `retract` with a
   reason removes accepted bytes.
 - **No game material.** Never commit or send retail modules, decrypted assets, disassembly dumps of whole modules,
-  keys, saves or private captures, and never send retail bytes or disassembly to an external service. Keep
-  machine-specific paths in the gitignored `hst-config.json`.
+  keys, saves or private captures. Never upload retail bytes, disassembly or pseudocode to a public or community
+  hosted tool (decomp.me, paste sites, public trackers); the model providers the owner already uses for matching
+  lanes may receive the function-level disassembly and pseudocode a lane needs (owner decision 2026-11-10). This
+  permits no other hosted tool. Keep machine-specific paths in the gitignored `hst-config.json`.
 - **Shared resources.** Use `--parallel 4` at most for `hstmatch.py`; do not run the tools that write into `src/`
   (`hstgen`, `hstclone`, `hsttmpl`, `hstperm`, `hstnewlib`) or build batches (`hstqueue`) unless the maintainer asked;
   do not search recursively outside `src/`, `wip/`, `docs/`, `symbols/`, `include/` and your own `try/` directory.

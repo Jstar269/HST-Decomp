@@ -1,0 +1,47 @@
+{
+ "schema": "hst-decomp.compiler-provenance.v1",
+ "recorded_utc": "2026-11-10T00:00:00Z",
+ "purpose": "FSF GCC 3.3.3 built as a psp cross compiler with this project's own Allegrex patch, to reproduce the later Sony psp-gcc (3.3.3-based, emits ins rd,$zero) that built the SDK 6.02 library objects of the parked ins block. Not Sony's compiler.",
+ "owner_decision": "2026-11-10, relayed by the coordinator: 'and yes to the download' (scope: gcc-3.3.3.tar.bz2 and its .sig from ftp.gnu.org only)",
+ "licence": "GPL-2.0-or-later (GNU GCC 3.3.3); the project's patch is GPL-2.0-or-later as a derivative of GCC; built locally, not redistributed",
+ "sources": {
+  "gcc-3.3.3.tar.bz2": {
+   "url": "https://ftp.gnu.org/gnu/gcc/gcc-3.3.3/gcc-3.3.3.tar.bz2",
+   "size": 23279245,
+   "server_date": "2004-02-21 17:46",
+   "sha256": "9ac6618495b7dd2ff0cd50abd76fe3c51287efcc724340687407f9fc250bdc6a",
+   "signature": {
+    "file": "gcc-3.3.3.tar.bz2.sig",
+    "sig_sha256": "271019cb6740c5c58bf6d059bf81ab7e899a4533863fffad7909e310ba849408",
+    "verified_with": "gpgv --keyring gnu-keyring.gpg (the keyring lbp-decomp fetched from https://ftp.gnu.org/gnu/gnu-keyring.gpg, on disk at C:/nk/private/compilers/lbp-gcc4/src/gnu-keyring.gpg, sha256 0fe55175b96a8ea1c4b670cc3fe11d56b341e4eff81b161ea49958ae550be6ca; not fetched again)",
+    "result": "Good signature from \"Gabriel Dos Reis <gdr@integrable-solutions.net>\", made 2004-02-21 14:45:02 EST",
+    "key": "DSA 1024 B02B49DB072830FD, fingerprint C0E3B256ADCDABFEFFAF4DF2B02B49DB072830FD"
+   },
+   "location": "WSL $HOME/hst-gcc33/dl (its own new directory)"
+  }
+ },
+ "status": "PARKED 2026-11-10 (owner priority: publishable code only; the target block is Sony SDK library code, not published). Not a matching profile; no proof uses it.",
+ "builds": {
+  "stock": {
+   "what": "unpatched FSF 3.3.3 + patches/host only, --target=mipsel-elf, host x86_64 gcc 13 (build.sh stock)",
+   "psp-gcc_sha256": "92c08a3ed3c7fb17590028e0ce91a106b447bd03911c5f86dc5a7e5fa82b880d",
+   "cc1_sha256": "91472461480ec90f82353a27d486a2351a5fd3751c6b7394771fb5511fda97c1",
+   "location": "WSL $HOME/hst-gcc33/stock"
+  },
+  "psp": {
+   "what": "FSF 3.3.3 + patches/host + patches/10-allegrex.diff (draft 1), --target=mipsallegrexel-psp-elf (build.sh psp)",
+   "psp-gcc_sha256": "54ae8c81724bc5746926cbbf00bd5576699925b25e47844235ecec7459e0ded5",
+   "cc1_sha256": "9fc9d612a70565c9c8b122bbaef362e06d6d59304705bf49a80b53cf90319b70",
+   "location": "WSL $HOME/hst-gcc33/psp",
+   "measured": false
+  }
+ },
+ "rounds": [
+  {"round": 1, "compiler": "stock", "flags": "-mips2 -mabi=eabi -msingle-float (+ each profile's -O, -G0 -fno-merge-constants; no -mext)",
+   "reference": "Sony psp-gcc 1.3.1/1.7.1 kits on every src/ source with cc=gcc131*/gcc171* (cmp.py)",
+   "same_assembly": 1120, "different": 1052, "candidate_failed": 32, "of": 2204,
+   "per_profile": {"gcc171-O2": [1088, 901, 32], "gcc171-O3": [18, 49, 0], "gcc171-Os": [14, 24, 0], "gcc171-O0": [0, 44, 0],
+                   "gcc171-O1": [0, 4, 0], "gcc131-O2": [0, 2, 0], "gcc171x-O1": [0, 2, 0], "gcc171x-O2": [0, 26, 0]},
+   "main_difference_seen": "Sony rounds EABI frames to 16 bytes (stock 8); draft 1 of the patch gives Allegrex 16-byte stack alignment, unmeasured"}
+ ]
+}

@@ -675,6 +675,12 @@ def gcc_profiles(home: str, gcc4_home: str | None = None) -> dict[str, dict[str,
                 "prefix": "",
                 "flags": f"-{optimization} -G0 -fno-merge-constants -mpreferred-stack-boundary=4",
             }
+            # SDK-only profile (owner decision 2026-11-09): psp-gcc-4.0.4x, lbp-decomp's kit with ins-from-zero
+            profiles[f"gcc404x-{optimization}"] = {
+                "driver": f"{g4}/psp-gcc-4.0.4x/bin/psp-gcc",
+                "prefix": "",
+                "flags": f"-{optimization} -G0 -fno-merge-constants -mpreferred-stack-boundary=4",
+            }
     return profiles
 
 
