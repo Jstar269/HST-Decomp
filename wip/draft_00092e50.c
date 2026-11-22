@@ -1,86 +1,70 @@
-/* HSTMATCH module=EBOOT.BIN start=0x00092e50 end=0x00092ff8 symbol=FUN_00092e50 lang=c99 */
-typedef unsigned char undefined;
-typedef unsigned char byte;
-typedef unsigned short ushort;
-typedef unsigned int uint;
-typedef unsigned long long ulonglong;
-typedef long long longlong;
-typedef unsigned char uchar;
-typedef unsigned char bool;
-typedef unsigned long long undefined8;
-typedef int code();
-#define true 1
-#define false 0
-#define ABS(x) ((x) < 0 ? -(x) : (x))
-typedef unsigned char undefined1;
-typedef unsigned short undefined2;
-typedef unsigned int undefined4;
-
-extern undefined4 DAT_00338b08;
+/* HSTMATCH module=EBOOT.BIN start=0x00092e50 end=0x00092ff8 symbol=FUN_00092e50 lang=c++ */
+struct Rec { char pad[0x62]; char b62; };
+struct Info { char pad[0x1b4]; int id; short f1b8; };
+struct Name { char pad[4]; char *text; };
+struct Ref { char pad[4]; Name **names; };
+struct Self {
+  char pad[0x50];
+  Info *info;
+  char pad54[0x1c];
+  Ref *ref;
+};
+extern "C" {
+extern Rec *DAT_00338b08;
 extern char DAT_002d29b4[];
-extern uint * FUN_000149a8(uint *param_1,uint *param_2);
-extern char * FUN_00014b74(char *param_1,char *param_2,uint param_3);
-extern int FUN_00014cfc(int param_1,int param_2);
-extern void FUN_0005ec14(int param_1,uint param_2,int param_3,undefined4 param_4,undefined4 param_5, undefined4 param_6,undefined4 param_7,undefined4 param_8);
-extern void FUN_00093094(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4, int param_5);
-extern int FUN_000d8c24(int param_1,int param_2,uint param_3);
+extern void FUN_000149a8(char *, char *);
+extern void FUN_00014b74(char *, char *, unsigned);
+extern char *FUN_00014cfc(char *, int);
+extern void FUN_0005ec14(Info *, int, int, int, int, char *, char *, char *);
+extern void FUN_00093094(Self *, char *, char *, int, int);
+extern Rec *FUN_000d8c24(Rec *, int, int);
 
-void FUN_00092e50(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4, undefined4 param_5,int param_6)
+void FUN_00092e50(Self *self, int a1, int a2, int a3, int a4, int flag)
 {
-  bool bVar1;
-  int iVar2;
-  int iVar3;
-  undefined4 uVar4;
-  int iVar5;
-  char *pcVar6;
-  undefined1 auStack_3f [63];
-  undefined1 uStack_40;
-  undefined1 auStack_80 [64];
-  
-  if (*(int *)(param_1 + 0x50) != 0) {
-    uVar4 = *(undefined4 *)(*(int *)(param_1 + 0x50) + 0x1b4);
-    iVar2 = FUN_000d8c24((int)(DAT_00338b08),(int)(0),(uint)(uVar4));
-    if (iVar2 != 0) {
-      bVar1 = false;
-      pcVar6 = (char *)0x0;
-      if (param_6 != 0) {
-        pcVar6 = DAT_002d29b4;
-      }
-      if (((int)*(char *)(iVar2 + 0x62) << 0x1c) >> 0x1c == 0) {
-        if (param_6 == 0) {
-          bVar1 = true;
-        }
-        else if (*(int *)(param_1 + 0x70) == 0) {
-          bVar1 = true;
-        }
-        else {
-          iVar2 = **(int **)(*(int *)(param_1 + 0x70) + 4);
-          if ((iVar2 != 0) && (iVar2 = *(int *)(iVar2 + 4), iVar2 != 0)) {
-            iVar3 = FUN_00014cfc((int)(iVar2),(int)(0x3a));
-            iVar5 = iVar2;
-            if (iVar3 != 0) {
-              iVar5 = iVar3 + 1;
-            }
-            iVar2 = FUN_00014cfc((int)(iVar2),(int)(0x5f));
-            if (iVar2 != 0) {
-              iVar2 = (iVar2 + 1) - iVar5;
-              FUN_00014b74((char *)(&uStack_40),(char *)(iVar5),(uint)(iVar2));
-              auStack_3f[iVar2 + -1] = 0;
-              FUN_000149a8((uint *)(auStack_80),(uint *)(&uStack_40));
-              bVar1 = true;
+  char buf1[64];
+  char buf2[64];
+  if (self->info != 0) {
+    int id = self->info->id;
+    Rec *rec = FUN_000d8c24(DAT_00338b08, 0, id);
+    if (rec != 0) {
+      bool ok = false;
+      char *pc = 0;
+      if (flag != 0) pc = DAT_002d29b4;
+      if ((((int)rec->b62 << 28) >> 28) == 0) {
+        if (flag != 0 && self->ref != 0) {
+          Name *n = *self->ref->names;
+          char *s2;
+          if (n != 0 && (s2 = n->text, s2 != 0)) {
+            char *colon = FUN_00014cfc(s2, ':');
+            char *start = colon != 0 ? colon + 1 : s2;
+            char *us = FUN_00014cfc(s2, '_');
+            if (us != 0) {
+              int len = (us + 1) - start;
+              FUN_00014b74(buf1, start, len);
+              buf1[len] = 0;
+              FUN_000149a8(buf2, buf1);
+              ok = true;
             }
           }
+        
+        } else {
+          ok = true;
         }
+      } else {
+        FUN_00093094(self, buf1, buf2, id, self->info->f1b8);
+        ok = true;
       }
-      else {
-        FUN_00093094((undefined4)(param_1),(undefined4)(&uStack_40),(undefined4)(auStack_80),(undefined4)(uVar4),(int)((int)*(short *)(*(int *)(param_1 + 0x50) + 0x1b8)));
-        bVar1 = true;
-      }
-      if (bVar1) {
-        FUN_0005ec14((int)(*(undefined4 *)(param_1 + 0x50)),(uint)(param_2),(int)(param_3),(undefined4)(param_4),(undefined4)(param_5),(undefined4)(pcVar6),(undefined4)(&uStack_40),(undefined4)(auStack_80));
+      if (ok) {
+        FUN_0005ec14(self->info, a1, a2, a3, a4, pc, buf1, buf2);
       }
     }
   }
-  return;
 }
-// near miss from lane fm9 (unreviewed)
+}
+
+// near miss api-hstm-20261121: 106/106 words, 11 differ (was 75): only the colouring of the two string pointers in the name-split
+// block is swapped (retail: text s2, later reused for the length; start s3 = the dead flag parameter's register; ours text s3,
+// start s2). Found: the `flag != 0 && ref != 0` guard with `else ok = true` after it (retail's shared ok block), buf1 declared
+// before buf2 (strncpy dest at sp+112), `start = colon ? colon + 1 : text`, no `int` dead locals. Declaration orders at block
+// level, int-typed text/start/len reuse, reusing the flag parameter as start (changes the prologue colouring): not exact.
+// improved by lane api-hstm-20261121 (unreviewed): 75 -> 11 differing words

@@ -42,7 +42,7 @@ struct Vec {
 };
 extern "C" void FUN_001cb464(Vec *v, void *g, int key);
 
-inline void rotate(It first, const It &middle, It last)
+inline void rotate(It first, It middle, It last)
 {
     if (first.p == middle.p || middle.p == last.p)
         return;
@@ -117,7 +117,7 @@ extern "C" void FUN_00287de4(Obj *self, int key, int hi, int defer)
             }
             if (lo < 0) {
                 v.push_back(*self->Item());
-                rotate(v.begin(), v.end() - 1, v.end());
+                It m(v.data + v.size - 1); rotate(v.begin(), m, v.end());
             }
             int n = hi - lo + 1;
             lo = max(lo, DAT_002fea14);
@@ -144,3 +144,9 @@ extern "C" void FUN_00287de4(Obj *self, int key, int hi, int defer)
 // (3) else-branch insert ret/it slots 4 lower (consequence of (1)).
 // Fixed already: Alloc().construct temp gives the 16-byte frame; Cmd is 28 bytes; cur/lo split; const& middle.
 // near miss from lane ol1 (unreviewed)
+// lane api-hstnear2-20261121 (13 -> 11): rotate by value `(It first, It middle, It last)` with a NAMED middle
+// `It m(v.data + v.size - 1); rotate(v.begin(), m, v.end());` keeps end() at 60 like retail, but the named m (56) + by-value copy
+// shift first/last/tag 8 lower (ours 48/40/36 vs retail 56/48/44). By-value with a temporary (`It(v.end().p-1)`, `v.end()-1`,
+// friend/member operator- spellings) gives 136 words (copy stored through memory). Extra `False` tag params on rotate: no change.
+// Left: the 3 slot groups (11 words) and Select's `sll v0,v1,4 / lw v1,100(sp) / addu a1,v1,v0` operand order (not retried).
+// improved by lane api-hstnear2-20261121 (unreviewed): 13 -> 11 differing words

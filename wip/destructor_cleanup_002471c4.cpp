@@ -19,11 +19,13 @@ extern void FUN_0001f0f0(void *, int);
 extern void FUN_00000a00(void *);
 }
 
+struct Alloc {};
 struct Vec {
     void **data;
     int size;
     unsigned int capacity;
 
+    void shrink(int n, Alloc) { size -= n; }
     void swap(Vec &other) {
         unsigned int c = capacity;
         capacity = other.capacity;
@@ -72,8 +74,10 @@ extern "C" Obj *FUN_002471c4(Obj *self, short flag)
                     i++;
                 } while (i < (unsigned int)DAT_0034a720.size);
             }
-            int n1 = DAT_0034a720.size;
-            DAT_0034a720.size -= n1;
+            {
+                int n1 = *(int *)&DAT_0034a720.size;
+                DAT_0034a720.shrink(n1, Alloc());
+            }
 
             if (DAT_0034a738.size != 0) {
                 i = 0;
@@ -86,8 +90,10 @@ extern "C" Obj *FUN_002471c4(Obj *self, short flag)
                     i++;
                 } while (i < (unsigned int)DAT_0034a738.size);
             }
-            int n2 = DAT_0034a738.size;
-            DAT_0034a738.size -= n2;
+            {
+                int n2 = *(int *)&DAT_0034a738.size;
+                DAT_0034a738.shrink(n2, Alloc());
+            }
 
             temp1.data = 0;
             temp1.size = 0;
@@ -119,4 +125,9 @@ extern "C" Obj *FUN_002471c4(Obj *self, short flag)
     }
     return self;
 }
-// near miss from lane ag2 (unreviewed)
+
+// near miss api-hstm-20261121: 174/174 words, 49 differ (was 65): the frame is retail's 64 now: the two vector clears are
+// `int n = size; G.shrink(n, Alloc());` (inline shrink with an unused by-value empty Alloc: the 16-byte slot; n read through
+// `*(int *)&G.size` so it is not CSE'd with the loop bound). Left: temp colouring around the two clears (retail n in v1 with
+// `lui v0` first; ours n in a0 and `lui v1`).
+// improved by lane api-hstm-20261121 (unreviewed): 65 -> 49 differing words

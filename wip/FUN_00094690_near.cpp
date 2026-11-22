@@ -5,9 +5,9 @@ struct Vec4 { float x, y, z, w; };
 struct LookAt;
 
 extern "C" {
-float cosf(float);
-float sinf(float);
-float atan2f(float, float);
+float FUN_0000bf34(float);
+float FUN_0000bc34(float);
+float FUN_0000c6dc(float, float);
 
 void FUN_00094690(LookAt *c, Vec3 *out, const Vec4 *dir, const Vec4 &up) {
     float x1 = dir->x;
@@ -17,33 +17,30 @@ void FUN_00094690(LookAt *c, Vec3 *out, const Vec4 *dir, const Vec4 &up) {
     float z2 = up.z;
     float y1 = dir->y;
 
-    float yaw = atan2f(x1, z1);
+    float yaw = FUN_0000c6dc(x1, z1);
     out->x = yaw;
-    cosf(yaw);
-    sinf(yaw);
+    FUN_0000bf34(yaw);
+    FUN_0000bc34(yaw);
 
-    float f27 = x1 * cosf(yaw) + z1 * sinf(yaw);
+    float f27 = x1 * FUN_0000bf34(yaw) + z1 * FUN_0000bc34(yaw);
     yaw = out->x;
-    float f21 = x2 * sinf(yaw) - z2 * cosf(yaw);
-    float f23 = x2 * cosf(yaw) + z2 * sinf(yaw);
+    float f21 = x2 * FUN_0000bc34(yaw) - z2 * FUN_0000bf34(yaw);
+    float f23 = x2 * FUN_0000bf34(yaw) + z2 * FUN_0000bc34(yaw);
 
-    float pitch = atan2f(y1, f27);
+    float pitch = FUN_0000c6dc(y1, f27);
     out->y = pitch;
 
-    float f20 = y2 * sinf(pitch) - f23 * cosf(pitch);
-    sinf(pitch);
-    cosf(pitch);
+    float f20 = y2 * FUN_0000bc34(pitch) - f23 * FUN_0000bf34(pitch);
+    FUN_0000bc34(pitch);
+    FUN_0000bf34(pitch);
 
-    out->z = atan2f(f21, f20);
+    out->z = FUN_0000c6dc(f21, f20);
 }
 }
 
-// 81/81 words, 30 differing words. First diff at +0x30.
-// Frame size (48 bytes) and all saved GPRs (s0, ra) and FPRs (f20-f27) match retail.
-// The algorithm is exact LookAt Euler angle decomposition (yaw/pitch/roll).
-// Unused cosf/sinf calls after yaw and before roll are verified.
-// Differences are strictly FP register colouring ($f20-$f26 assignment between local variables):
-// Retail has: f21=dir.x, f26=dir.z, f23=up.x, f24=up.y, f25=up.z, f20=dir.y, f27=f27, f22=yaw.
-// MWCC persistent colouring puts up.y in f20 and dir.y in f25.
-// Ruled out: struct copy assignments (causes stack frame growth), declaration order tricks (MWCC prioritizes live range end over decl order for floats).
-// near miss from lane dsn5 (unreviewed)
+
+// near miss api-hstm-20261121: 81/81 words, 30 differ, all FPR colouring (retail f21=dir.x f26=dir.z f23=up.x f24=up.y f25=up.z
+// f20=dir.y f27=cos-sum f22=yaw; the yaw is RE-READ from out->x into f26, dir.z's register). Fixed vs the older wip: callees named by
+// address (FUN_0000c6dc atan2f, FUN_0000bf34 cosf, FUN_0000bc34 sinf; the lane has no atan2f/cosf/sinf symbols).
+// Ruled out: all 720 orders of the six input loads (30 every time).
+// improved by lane api-hstm-20261121 (unreviewed): no comparable result -> 30 differing words

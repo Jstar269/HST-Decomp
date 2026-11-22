@@ -23,23 +23,22 @@ void FUN_000fbaf4(char *self)
                 obj = FUN_00050fc0(obj, src[i]);
             *(void **)(slot + 64) = obj;
             FUN_000511c4(obj, src[i], 0);
-            FUN_00051398(obj, 100000.0f);
+            FUN_00051398(*(void **)(slot + 64), 100000.0f);
             i++;
             slot += 4;
         } while (i < 6);
         void *q = FUN_00000bcc(84);
-        if (q != 0) {
+        if (q != 0)
             FUN_00102e38(q);
-            *(void **)(self + 0x3c) = q;
-            FUN_00104118(q, DAT_002d8324, 0);
-            FUN_00103540(q, 100000.0f);
-            FUN_001037c8(q, -1);
-            FUN_00103628(q, 1);
-        }
+        *(void **)(self + 0x3c) = q;
+        FUN_00104118(q, DAT_002d8324, 0);
+        FUN_00103540(*(void **)(self + 0x3c), 100000.0f);
+        FUN_001037c8(*(void **)(self + 0x3c), -1);
+        FUN_00103628(*(void **)(self + 0x3c), 1);
     }
 }
-// NEAR MISS: 71/65 words. Structure right (flag guard, 6x {alloc 72, ctor(o,name), store at +64, two
-// setters}, 100000.0f constant, q block with 84-byte ctor chain); ours keeps the new object in s4 and
-// duplicates the store into both arms of `if (obj)` where retail branches on v0 and stores once at the
-// join. Ruled out: typed pointer, inline New() helper (MISPLACED), index-form slot store.
-// near miss from lane ds11 (unreviewed)
+// api-hste1 NEAR 50 differ (was 68): the new object must not stay in a saved register: retail stores the ctor result once at the join and re-reads it from the slot for the
+// later calls (`F(obj,..)` uses v0, `F2(*(void **)(slot + 64), ..)` / `*(void **)(self + 0x3c)` reload), and the q block likewise. Remaining: ours puts `sw v0,64(s1)` into the
+// `beqzl v0` delay slot (store hoisted from the join) where retail has `lw a1,0(s0)` there and the store after the join; `F(*(void **)(slot+64) = obj, src[i], 0)` (right-to-left arg
+// evaluation) did not move it.
+// improved by lane api-hste1-20261121 (unreviewed): 68 -> 50 differing words

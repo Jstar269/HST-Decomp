@@ -127,8 +127,8 @@ extern "C" void FUN_000ef564(Coin *self, int state)
         b = DAT_002d71c8 + (DAT_002d71cc - DAT_002d71c8) * ((unsigned)GlobalRand() * (1.0f / 32768.0f));
         float n = FUN_0000bd2c(FUN_0000bd2c(Min(a[0], b)) / 2.0f) * 2.0f;
         float k = 1.0f + n;
-        float o = DAT_00338bb8;
-        o += (d - k * self->period / 2.0f) / self->period;
+        float o = (d - k * self->period / 2.0f) / self->period;
+        o = DAT_00338bb8 + o;
         float m = k + DAT_00338bbc;
         self->offset = o;
         self->speed = self->period / m;
@@ -162,3 +162,9 @@ extern "C" void FUN_000ef564(Coin *self, int state)
 // Case 3 (2 words): retail loads `heads` (lbu a1) before the `tail` pointer (lw a0 in the jal slot); ruled out: unsigned char/bool
 // prototypes (37-39), `!= 0` (37), an int/uchar getter (11), an int local (11).
 // improved by lane pn1b (unreviewed): 15 -> 11 differing words
+// lane api-hstnear2-20261121 (11 -> 3): case 2 written `float o = (d - k * self->period / 2.0f) / self->period; o = DAT_00338bb8 + o;`
+// (numerator chain first, bb8 added after) gives retail's FPR numbering (n f2, bb8 f1, period f3) and bb8 load position; left 1 word:
+// `add.s f2,f2,f1` (ours t + bb8) vs retail `add.s f2,f1,f2` (bb8 + t); `o + DAT`, `o += DAT`, Add() inline (by value/const&: 12),
+// `- 0.0f`, extern const bb8 all give the same 3 words; `float o = DAT; o += t` form gives bb8 first but the old numbering (11).
+// Case 3 (2 words): `bool heads` member, `int h` local, `!heads`/`heads == 0` for the head call: no change/worse.
+// improved by lane api-hstnear2-20261121 (unreviewed): 11 -> 3 differing words

@@ -23,21 +23,21 @@ extern int FUN_0016bb88(void);
 extern int FUN_0022c484(void);
 extern int FUN_0024e064(void);
 extern int FUN_0024e230(int param_1,int param_2,int param_3,int param_4);
-extern bool FUN_002acd28(int param_1);
-extern undefined4 FUN_002ada80(int param_1);
+extern int FUN_002acd28(int param_1);
+extern int FUN_002ada80(int param_1);
 
 void FUN_001faa10(int param_1)
 {
-  bool bVar1;
   int iVar2;
+  bool bVar1;
   int iVar3;
   byte *pbVar4;
   undefined4 uVar5;
   int iVar6;
   
   iVar2 = FUN_0016bb88();
-  if (((DAT_0034a678 == 0x2a) && (*(char *)(param_1 + 0x521) == '\0')) &&
-     (iVar6 = FUN_0022c484(), 2 < iVar6)) {
+  if (((DAT_0034a678 == 0x2a) && (*(uchar *)(param_1 + 0x521) == '\0')) &&
+     (iVar6 = FUN_0022c484(), iVar6 >= 3)) {
     FUN_0015d1e8((uint)(0));
   }
   bVar1 = true;
@@ -45,16 +45,8 @@ void FUN_001faa10(int param_1)
   do {
     iVar3 = FUN_002acd28((int)(iVar6));
     if (iVar3 != 0) {
-      if (iVar6 < 0) {
-        pbVar4 = (byte *)0x0;
-      }
-      else if (iVar6 < 0x28) {
-        pbVar4 = (byte *)(iVar2 + 0x1058);
-      }
-      else {
-        pbVar4 = (byte *)0x0;
-      }
-      if (1 < *pbVar4 - 4) {
+      if (iVar6 >= 0 && iVar6 < 0x28) pbVar4 = (byte *)(iVar2 + 0x1058); else pbVar4 = (byte *)0;
+      if ((uint)*pbVar4 - 4 > 1) {
         bVar1 = false;
       }
     }
@@ -91,16 +83,10 @@ void FUN_001faa10(int param_1)
   }
   return;
 }
-// near miss: 105/105 words, 25 differing.
-// Structure matches the draft's; the remaining delta is a saved-register permutation plus two
-// small idioms. Retail: iVar2 = s3 (the FUN_0016bb88 result), bVar1 = s2 (the check flag),
-// iVar6 = s1 (first loop counter), the second flag = s4. Ours: iVar2 = s2, first flag = s3,
-// second flag reuses s2's register. Swapping the declarations of bVar1/iVar2, and splitting the
-// flag into two separate bool locals (each tried alone), did not move the assignment.
-// Also: `2 < FUN_0022c484()` compiles to `slti at,v0,3` where retail has `slti v0,v0,3`; writing
-// `FUN_0022c484() >= 3` keeps the slti in v0 but rebuilds the &&-chain and costs 4 more words.
-// The field at param_1+0x521 is an unsigned char (retail lbu; the draft's `char` gives lb).
-// The pbVar4 if/else chain: retail leaves a `nop` after `beqz at` and duplicates the two
-// `move v0,zero` arms (105 words); every spelling we tried makes MWCC merge the two null arms
-// (104 words) and shifts the whole block by one.
-// near miss from lane fm9 (unreviewed)
+// near miss api-hstm-20261121: 105/105 words, 6 differ (was 25). Fixes found: iVar2 declared before bVar1; the
+// pbVar4 chain as `if (i >= 0 && i < 40) p = base+0x1058; else p = 0;` (one shared zero arm, no beqzl dup); `(uint)*p - 4 > 1`
+// gives sltiu; `iVar6 >= 3` gives slti v0; field +0x521 is uchar.
+// Left: the hoisted invariant `iVar2 != 0` (sltu) is s4 and the second-phase flag s1; retail has t=s1, flag=s4.
+// Ruled out: separate flag locals (13 diffs), named `nz` local of any type (copy-propagated, same 6), `> 0`/`?:` forms (no hoist),
+// for/do loop spellings, all 720 declaration orders of the six locals.
+// improved by lane api-hstm-20261121 (unreviewed): 25 -> 6 differing words

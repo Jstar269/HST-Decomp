@@ -1,67 +1,59 @@
-/* HSTMATCH module=EBOOT.BIN start=0x001f483c end=0x001f4900 symbol=FUN_001f483c lang=c99 */
-/* Near miss: 48/49 words; loop and condition logic matched; prologue branch scheduling remaining */
-
+/* HSTMATCH module=EBOOT.BIN start=0x001f483c end=0x001f4900 symbol=FUN_001f483c lang=c++ */
 extern int DAT_003313c4;
-extern void FUN_00049774(void);
-extern void FUN_00064194(int, void *);
+extern "C" void FUN_00049774(void);
+extern "C" void FUN_00064194(int, void *);
 
 struct Inner {
     char pad0[8];
     float val;
 };
 
-struct Item {
-    char pad0[244];
-    struct Inner **inner_ptr;
-    char padf8[12];
+struct Elem {
+    Inner **inner;
+    char pad[12];
     float val;
+    char pad2[32];
 };
 
 struct Container {
     char pad0[344];
     int start;
     int end;
+    int End() const { return end; }
 };
 
 struct Obj {
     char pad0[960];
-    struct Container **container_ptr;
+    Container **container_ptr;
 };
 
-void FUN_001f483c(struct Obj *param_1)
+static inline bool AllOk(Container *c)
 {
-    struct Container **cp = param_1->container_ptr;
-    if (!cp) {
-        return;
-    }
-
-    struct Container *c = *cp;
     int i = c->start;
-    int ok;
-
-    if (c->end < i) {
-        ok = 1;
-    } else {
-        struct Item *item = (struct Item *)((char *)c + i * 52);
+    if (i <= c->End()) {
+        Elem *e = (Elem *)((char *)c + 244) + i;
         do {
             float limit = 0.0f;
-            if (item->inner_ptr != 0) {
-                limit = (*item->inner_ptr)->val;
-            }
-            if (item->val < limit) {
-                ok = 0;
-                goto done;
-            }
+            if (e->inner != 0)
+                limit = (*e->inner)->val;
+            if (e->val < limit)
+                return false;
             i++;
-            item = (struct Item *)((char *)item + 52);
-        } while (i <= c->end);
-        ok = 1;
+            e++;
+        } while (i <= c->End());
     }
-
-done:
-    if (!ok) {
-        FUN_00049774();
-    }
-    FUN_00064194(DAT_003313c4, param_1->container_ptr);
+    return true;
 }
-// near miss from lane u6fr1-0 (unreviewed)
+
+extern "C" void FUN_001f483c(Obj *self)
+{
+    if (self->container_ptr != 0) {
+        if (!AllOk(*self->container_ptr))
+            FUN_00049774();
+        FUN_00064194(DAT_003313c4, self->container_ptr);
+    }
+}
+// NEAR 22 differ (api-hste1): retail keeps the container ptr in a0 across the null test (move s0,a0; lw a0,960(a0); beqzl a0 with lw ra in the slot) and
+// colours loop counter a2 / element a1; ours v1 / a1,a0. Element address is c+i*52 with 244/260 displacements NOT folded (use (char*)c + i*52 cast: 48 words, folds right, but outer branch loses likely slot).
+// Tried: Container** helper param, local cp, const getter Ptr(), open-coded loop, early return: all 45-46 differ.
+// improved by lane api-hste1-20261121 (unreviewed): 36 -> 22 differing words

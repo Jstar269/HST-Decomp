@@ -1,51 +1,50 @@
 /* HSTMATCH module=EBOOT.BIN start=0x002296a0 end=0x00229774 symbol=FUN_002296a0 lang=c99 */
+typedef struct {
+  unsigned int first;
+  unsigned int second;
+} Pair;
 
 typedef struct {
-  unsigned int a;
-  unsigned int b;
-} Item;
-
-typedef struct {
-  unsigned char pad[16];
-  unsigned char child[1];
+  char pad[0x10];
+  int map;
 } Owner;
 
-extern void FUN_00229774(void *self);
-extern unsigned char *FUN_0004cad0(void *data, int *size, int n, int m);
-extern void FUN_00229af0(void *out, void *dst, Item *item);
+extern void FUN_00229774(Owner *self);
+extern unsigned char *FUN_0004cad0(void *arg, int *size, int a, int b);
+extern void FUN_00229af0(void *out, void *map, const Pair *item);
 extern void FUN_000104e0(void *p);
 
-int FUN_002296a0(unsigned short *arg0, Owner *arg1)
+int FUN_002296a0(Owner *self, void *arg)
 {
-  unsigned char *p;
-  Owner *self = (Owner *)arg0;
-  unsigned short *data = (unsigned short *)arg1;
   int size;
   unsigned char out[12];
+  Pair item;
+  unsigned char *buf;
+  unsigned char *p;
 
   FUN_00229774(self);
-  data = (unsigned short *)FUN_0004cad0(data, &size, 16, 1);
-  if (data == 0)
+  buf = FUN_0004cad0(arg, &size, 16, 1);
+  if (buf == 0 || size <= 0)
     return 0;
-  if (size <= 0)
-    return 0;
-  p = (unsigned char *)data;
-  if (p < (unsigned char *)data + size) {
-    do {
-      Item item;
-      item.a = ((unsigned int)*(unsigned short *)p << 16) | *(unsigned short *)(p + 2);
-      item.b = *(unsigned int *)(p + 4);
-      p += 8;
-      FUN_00229af0(out, self->child, &item);
-    } while (p < (unsigned char *)data + size);
+  for (p = buf; p < buf + size; ) {
+    unsigned short hi = *(unsigned short *)p;
+    p = (unsigned char *)((unsigned short *)p + 1);
+    unsigned short lo = *(unsigned short *)p;
+    p = (unsigned char *)((unsigned short *)p + 1);
+    unsigned int val = *(unsigned int *)p;
+    item.first = ((unsigned int)hi << 16) | lo;
+    item.second = val;
+    p = (unsigned char *)((unsigned int *)p + 1);
+    FUN_00229af0(out, &self->map, &item);
   }
-  FUN_000104e0(data);
+  FUN_000104e0(buf);
   return 1;
 }
-// Best after 15 hstmatch compiles: 31/53 words differ. The stack frame, callee-saved set, input-buffer
-// register, and scratch slots match. A byte cursor with p += 8 gives the right loop extent and item
-// layout; the remaining main mismatch is the object and cursor colours (s2/s1 swapped against retail),
-// plus the null-return branch layout and instruction scheduling inside the loop. Tried separate and
-// shared result forms, direct returns, char/short cursor types, preloaded halfword, owner-field pointer,
-// and declaration/statement order. No exact match; parked at the lane's 15-compile limit.
-// improved by lane lnm1 (unreviewed): 50 -> 31 differing words
+// Improved to 53/53 words, 21 differing (down from 31): typed pointer increments
+// ((unsigned short *)p + 1) x2 and ((unsigned int *)p + 1) reproduce retail's unfolded
+// +2/+2/+4 addiu chain, `buf == 0 || size <= 0` reproduces retail's beqzl/bgtzl/b guard,
+// and out[12] + Pair match the stack slots at sp+32/sp+24. Remaining 21 diffs are purely
+// s-reg permutation (retail buf=s0, self=s1, p=s2; ours p=s0, buf=s1, self=s2) and
+// scheduling addiu s2,v1,4 after the two sw stores. Tried C/C++, Pair temp vs local,
+// reusing arg for buf, block-scoped p in do/while.
+// improved by lane oc-hst-20261121 (unreviewed): 24 -> 21 differing words

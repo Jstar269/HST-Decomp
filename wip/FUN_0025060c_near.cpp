@@ -15,6 +15,7 @@ struct ScrollListObj {
     int row;
     int pad360;
     int top;
+    Item *At(int i) const { return items[i]; }
 };
 
 extern "C" {
@@ -27,14 +28,14 @@ extern "C" void FUN_0025060c(ScrollListObj *self)
 {
     int target_id;
     if (poll(self, Tag()) != 0) {
-        target_id = self->items[self->unk300]->id;
+        target_id = self->At(self->unk300)->id;
     } else {
-        target_id = self->items[self->unk2fc]->id;
+        target_id = self->At(self->unk2fc)->id;
     }
 
+    int items_cnt = self->items_cnt;
     Item **p = self->items;
     int count = self->count;
-    int items_cnt = self->items_cnt;
     Item **end = p + items_cnt;
     int i = 0;
 
@@ -67,3 +68,6 @@ extern "C" void FUN_0025060c(ScrollListObj *self)
 // What differs: MWCC CSEs items (+0x350) between target_id setup and loop preheader into a3,
 // while retail reloads items into a2 at 0x25065c (+0x50), leading to swapped a2/a3 registers in loop.
 // improved by lane dsn4 (unreviewed): 56 -> 55 differing words
+// NEAR 13 differ (api-hste1): const getter At(i) (index loaded before items, no CSE with the loop's items load) and cnt/items/count load order fixed the schedule; only colours differ:
+// retail p=a2 count=a3 target_id=t0, ours count=a2 target_id=a3 p=t0. Ruled out: all 24 declaration orders of target_id/p/count/i, for-loop, inline TargetId() helper, ternary target (60 differ).
+// improved by lane api-hste1-20261121 (unreviewed): 55 -> 13 differing words

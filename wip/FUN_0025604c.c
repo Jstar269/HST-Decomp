@@ -43,7 +43,8 @@ void FUN_000143b0(char *, const char *, ...);
 void FUN_0010d4a8(Widget *);
 }
 
-#define BUF_BASE ((char *)0x0034a7a0)
+extern char DAT_0034a7a0[];
+#define BUF_BASE DAT_0034a7a0
 
 extern "C" void FUN_0025604c(Obj *self, int idx, int val)
 {
@@ -92,3 +93,6 @@ extern "C" void FUN_0025604c(Obj *self, int idx, int val)
     }
 }
 // near miss from lane s10171846g1r1-0 (unreviewed)
+// api-hste1: 0x34a7a0 now a symbol (DAT_0034a7a0, lui 0x35/addiu -22624). 48 differ. Retail: self in s4, off=idx*8 in s3 (sll s3,a1,3 inside both arms), buffer address recomputed
+// (lui/addiu/addu v0,v0,s3) for the call args and AGAIN for cur_w->text after the call (ours keeps it in s4). Tried idx*8 spellings, &BUF[off], (char*)+(unsigned), off assigned per arm: 48-57.
+// improved by lane api-hste1-20261121 (unreviewed): 53 -> 48 differing words

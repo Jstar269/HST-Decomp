@@ -4,7 +4,7 @@
    "data/sdk-gcc4-units.json": "3baf0a8d5dc2f2c696a04531a246cd83c3fce1793d8014949eea35c20309f9c1",
    "tools/hstconfig.py": "626e2fe529c14ad9493b3f7a7c3e7935b0d72372bf5d314d0853ea1de9728823",
    "tools/hstgate.py": "a7016d411f5b830eb21d4d4489544a701b4562b7e9c555c167c7fc3a81683483",
-   "tools/hstmatch.py": "f78dbc6168d82ce340c7e600494787652f2f1d3cb3669f5d1670351882e8f96b",
+   "tools/hstmatch.py": "77ecc60a98e750b2597093ce0bdf9f4eb367980d1067ac7f10fb19d283f2fe46",
    "tools/hstpromote.py": "31f480fd6deb067473a31532a72848e64786c46e8b39d9899ca61ef9678daebc",
    "tools/hstproof.py": "3fbfae15a064668c6a2412e7698bb2b1a6ed92c627f1d42c45981355985762f1"
   },
@@ -1207,7 +1207,7 @@
    }
   }
  },
- "core_digest": "3b3778ab170e92a62a60e02560071fad51d2416bfe4d8419cb86859c5fed0e48",
+ "core_digest": "7d7d22eedbcc2537a4a3dd916e056a5931c6cfaf597ddf9b4384d6a1bb665de4",
  "history": [
   {
    "digest": "9493e6106636aff84e57adce4cf0c985983ac492b1ed6d40292a0f87ce79ae7e",
@@ -1733,6 +1733,20 @@
    "scope": "full",
    "to": "3b3778ab170e92a62a60e02560071fad51d2416bfe4d8419cb86859c5fed0e48",
    "utc": "2026-11-10T01:49:57Z"
+  },
+  {
+   "changes": [
+    "tools/hstmatch.py changed"
+   ],
+   "event": "migrate-toolchain",
+   "from": "3b3778ab170e92a62a60e02560071fad51d2416bfe4d8419cb86859c5fed0e48",
+   "journal_seq": 292,
+   "reason": "merge of the 2026-11-17 audit fix (a382c0b6): hstmatch validates header values, quotes link paths, bounds WSL steps; no codegen change",
+   "reverified": 15777,
+   "run": "20261122T022658Z-37978b",
+   "scope": "full",
+   "to": "7d7d22eedbcc2537a4a3dd916e056a5931c6cfaf597ddf9b4384d6a1bb665de4",
+   "utc": "2026-11-22T04:01:23Z"
   }
  ],
  "schema": "hst-decomp.toolchain-manifest.v1",
