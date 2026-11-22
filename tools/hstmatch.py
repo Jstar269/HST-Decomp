@@ -166,6 +166,32 @@ def build_key(path: Path) -> str:
     return f"{p.parent.name}__{p.stem}__{digest}"
 
 
+# Header values that reach a shell command line or a build path are checked here, so that no header can run a command
+# or write outside build/: `lang` is one of the languages the compilers take, `module` is a plain file name (no path
+# separator, no shell metacharacter, not `.`/`..`), and every `extra=` token is a single compiler option with no path
+# and no shell metacharacter (it is still shell-quoted where it is used).
+LANGS = ("c", "c99", "c++")
+MODULE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*")
+EXTRA_FLAG = re.compile(r"-[A-Za-z0-9][A-Za-z0-9_+=,.:-]*")
+
+
+def extra_flags(value: str, path: Path | str = "") -> list[str]:
+    """The `extra=` header value as a list of compiler options; ValueError for anything that is not one."""
+    try:
+        tokens = shlex.split(value)
+    except ValueError as e:
+        raise ValueError(f"{path}: bad extra= value {value!r} ({e})") from None
+    for t in tokens:
+        if not EXTRA_FLAG.fullmatch(t):
+            raise ValueError(f"{path}: extra= token {t!r} is not a plain compiler option")
+    return tokens
+
+
+def extra_args(h: dict) -> str:
+    """The header's `extra=` options for a shell command line, each one quoted."""
+    return " ".join(shlex.quote(t) for t in extra_flags(h.get("extra", "")))
+
+
 def parse_header(path: Path) -> dict:
     m = HEADER.search(path.read_text(encoding="utf-8", errors="replace")[:2000])
     if not m:
@@ -175,9 +201,15 @@ def parse_header(path: Path) -> dict:
     for key in ("module", "start", "end", "symbol"):
         if key not in fields:
             raise ValueError(f"{path}: header lacks {key}")
+    if not MODULE_NAME.fullmatch(fields["module"]):
+        raise ValueError(f"{path}: module={fields['module']!r} is not a module file name")
     fields["start"] = int(fields["start"], 16)
     fields["end"] = int(fields["end"], 16)
     fields.setdefault("lang", "c++" if path.suffix == ".cpp" else "c99")
+    if fields["lang"] not in LANGS:
+        raise ValueError(f"{path}: lang={fields['lang']!r} is not one of {', '.join(LANGS)}")
+    if "extra" in fields:
+        extra_flags(fields["extra"], path)
     if "helpers" in fields:
         fields["helpers"] = parse_helpers(fields["helpers"], fields, path)
     return fields
@@ -217,9 +249,11 @@ def placed_functions(h: dict) -> list[tuple[str, int, int]]:
 EXTRA_SYMBOLS: list[Path] = []  # --symbols-extra: candidate entries tried for one run only
 
 
-def load_symbols(module: str) -> dict[str, int]:
+def load_symbols(module: str, include_extra: bool = True) -> dict[str, int]:
+    """The symbol map of a module (symbols/<module>.txt, then the --symbols-extra files unless include_extra is
+    False). A name that carries its address (FUN_/DAT_/LAB_/PTR_/jtbl_xxxxxxxx) may only be bound to that address."""
     out: dict[str, int] = {}
-    for path in [ROOT / "symbols" / f"{module}.txt", *EXTRA_SYMBOLS]:
+    for path in [ROOT / "symbols" / f"{module}.txt", *(EXTRA_SYMBOLS if include_extra else [])]:
         if not path.exists():
             continue
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -229,9 +263,14 @@ def load_symbols(module: str) -> dict[str, int]:
             m = re.fullmatch(r"(\S+)\s*=\s*(0x[0-9A-Fa-f]+)\s*;?", line)
             if not m:
                 raise ValueError(f"bad symbol line in {path}: {line}")
-            if m.group(1) in out and out[m.group(1)] != int(m.group(2), 16):
-                raise ValueError(f"conflicting symbol {m.group(1)} in {path}")
-            out[m.group(1)] = int(m.group(2), 16)
+            name, value = m.group(1), int(m.group(2), 16)
+            named = default_address(name)
+            if named is not None and named != value:
+                raise ValueError(f"symbol {name} = 0x{value:08x} in {path} contradicts the address its name carries "
+                                 f"(0x{named:08x})")
+            if name in out and out[name] != value:
+                raise ValueError(f"conflicting symbol {name} in {path}")
+            out[name] = value
     return out
 
 
@@ -359,6 +398,10 @@ def target_references(obj: bytes, h: dict):
         sym = next(((v, s) for n, v, s, i, sh in symbols if n == h["symbol"] and sh == ti), None)
         if sym is None:
             return None, None
+        if h["end"] - h["start"] > sym[1] and sum(1 for n, s in sections if n == ".text" and s[1] == 1 and s[5]) > 1:
+            # a multi-function run: the compared span runs on into the object's later .text sections (mwccpsp gives
+            # every function its own), whose relocations this per-section scan does not place in the span
+            return None, None
         span_of = {ti: (sym[0], sym[0] + max(sym[1], h["end"] - h["start"]))}
     ref_names, ref_sections = set(), set()
     for n, s in sections:
@@ -446,17 +489,41 @@ class ToolFailure(RuntimeError):
     result about any source, so it is never turned into a per-source status."""
 
 
-def run_wsl(lines: list[str], name: str, native: str | None = None) -> None:
+# Time limit of one compile job or one link line (the campaign driver, toolchain/drivers/mwcc_wibo_link.py, bounds each
+# of its steps the same way). A step that runs out of time is a ToolFailure: the run stops, aloud, and its build
+# directory locks are released, instead of a hung wibo/mwccpsp or WSL instance blocking this run and every run on the
+# same sources forever.
+STEP_TIMEOUT_SECONDS = 120
+WSL_RETURN_GRACE_SECONDS = 60     # wsl.exe itself must return this long after the Linux-side limit killed the step
+
+
+def step_timeout(jobs: int, parallel: int = 1) -> int:
+    """Seconds allowed for `jobs` jobs run `parallel` at a time, plus one job's time for the WSL start."""
+    return STEP_TIMEOUT_SECONDS * (-(-max(jobs, 1) // max(parallel, 1)) + 1)
+
+
+def run_wsl(lines: list[str], name: str, native: str | None = None, timeout: int | None = None) -> None:
     # Per-process script names, so independent runs (on different sources) can overlap. `native` is exported
-    # as $N for the MWCC command lines.
+    # as $N for the MWCC command lines. `timeout` (seconds) bounds the step: the Linux side runs it under coreutils
+    # `timeout`, which kills the step's whole process group, and wsl.exe must return within a grace period after it.
     script = ROOT / "build" / f"{name}.{os.getpid()}.sh"
     prologue = ["#!/bin/sh"] + (["export N=" + native] if native else [])
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text("\n".join(prologue + lines) + "\n", encoding="utf-8", newline="\n")
+    limit = ["timeout", "-k", "10", str(timeout)] if timeout is not None else []
     try:
         for attempt in range(WSL_CONNECT_ATTEMPTS):
-            done = subprocess.run(["wsl.exe", "-e", "sh", to_wsl(script)], check=False,
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            started = time.monotonic()
+            try:
+                done = subprocess.run(["wsl.exe", "-e", *limit, "sh", to_wsl(script)], check=False,
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                      timeout=None if timeout is None else timeout + WSL_RETURN_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                raise ToolFailure(f"the {name} step did not finish within {timeout}s and wsl.exe did not return: "
+                                  "no source of this run was measured") from None
+            if timeout is not None and done.returncode == 124 and time.monotonic() - started >= timeout:
+                raise ToolFailure(f"the {name} step did not finish within {timeout}s (a hung compiler, linker or WSL "
+                                  "instance): it was stopped, and no source of this run was measured")
             # wsl.exe's own errors (service timeout, instance terminated) are UTF-16 text on its output; the compiler's
             # diagnostics go to the per-source logs, so what comes back here is wsl.exe's (and objcopy's, link step)
             err = done.stdout or b""
@@ -534,7 +601,8 @@ def build_dir_locks(lock_dir: Path, keys: list[str]):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("paths", nargs="*", type=Path)
-    ap.add_argument("--parallel", type=int, default=6)
+    # AGENTS.md (Shared resources): 4 at most for agents; a higher value is an explicit choice of the caller
+    ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--all", action="store_true", help="rebuild every source under src/")
@@ -542,6 +610,8 @@ def main() -> int:
     ap.add_argument("--symbols-extra", type=Path, action="append", default=[],
                     help="extra 'name = 0xaddr;' entries for this run (results are not committed symbols)")
     args = ap.parse_args()
+    if args.parallel < 1:
+        ap.error("--parallel must be at least 1")
     EXTRA_SYMBOLS.extend(args.symbols_extra)
     flags = args.flags if args.flags is not None else PROFILE["flags"]
     if not args.paths and not args.all:
@@ -572,7 +642,7 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
     cmds = []
     native = None
     for p, h, out in jobs:
-        extra = h.get("extra", "")
+        extra = extra_args(h)
         log = shlex.quote(to_wsl(out / 'compile.log'))
         obj = shlex.quote(to_wsl(out / 'obj.o'))
         cc = h.get("cc", "mwcc219")
@@ -593,16 +663,19 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
             raise SystemExit(f"{p}: unknown compiler profile cc={cc}")
         native = native_dir()
         cmds.append(f"cd {shlex.quote(to_wsl(p.parent))} && MWCIncludes={shlex.quote(to_wsl(ROOT / 'include'))} "
-                    f"$N/wibo $N/builds/{PROFILE['build']}/mwccpsp.exe {flags} -lang {h['lang']} {extra} "
+                    f"$N/wibo $N/builds/{PROFILE['build']}/mwccpsp.exe {flags} -lang {shlex.quote(h['lang'])} {extra} "
                     f"-o {obj} {shlex.quote(p.name)} > {log} 2>&1")
     jobfile = ROOT / "build" / f"compile.{os.getpid()}.jobs"
     jobfile.write_text("\n".join(cmds) + "\n", encoding="utf-8", newline="\n")
     try:
-        run_wsl([f"tr '\\n' '\\0' < {shlex.quote(to_wsl(jobfile))} | xargs -0 -P {args.parallel} -n 1 sh -c"], "compile", native)
+        run_wsl([f"tr '\\n' '\\0' < {shlex.quote(to_wsl(jobfile))} | xargs -0 -P {args.parallel} -n 1 sh -c"], "compile", native,
+                timeout=step_timeout(len(cmds), args.parallel))
     finally:
         jobfile.unlink(missing_ok=True)
     # 2. link each object at its retail address with only the symbols it needs
     symcache: dict[str, dict[str, int]] = {}
+    committed_cache: dict[str, dict[str, int]] = {}   # symbols/<module>.txt alone (no --symbols-extra)
+    used_extra: dict = {}     # source -> names its link took from --symbols-extra (not committed symbols)
     link = []
     results = {}
     expected_sections: dict = {}
@@ -620,6 +693,7 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
         # Names and sections reached only by OTHER functions of the object (a library file compiled whole)
         # cannot change the compared bytes: such names get a placeholder and such sections stay unplaced.
         ref_names, ref_sections = target_references(obj, h)
+        committed = committed_cache.setdefault(h["module"], load_symbols(h["module"], include_extra=False))
         defs, missing = [], []
         for n in undefined:
             addr = syms.get(n, default_address(n))
@@ -627,6 +701,8 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
                 defs.append(f"{n} = 0x00000000;   /* not referenced by the compared function */")
                 continue
             (defs.append(f"{n} = 0x{addr:08x};") if addr is not None else missing.append(n))
+            if addr is not None and n not in committed and default_address(n) is None:
+                used_extra.setdefault(p, []).append(n)     # linked through a --symbols-extra entry
         if missing:
             results[p] = ("MISSING_SYMBOLS", " ".join(missing))
             continue
@@ -671,16 +747,17 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
         expected_sections[p] = [sec for sec in PLACED_WITH_CONTENTS if sec in sections and sections[sec][5]
                                 and sec.strip(".") in h]
         pspdev = pspdev_bin()
-        extract = "".join(f" && {pspdev}/psp-objcopy -O binary -j {sec} {to_wsl(out / 'linked.elf')} "
-                          f"{to_wsl(out / (sec.strip('.') + '.bin'))}" for sec in expected_sections[p])
+        q = lambda path: shlex.quote(to_wsl(path))  # noqa: E731 - every path on the link lines is quoted
+        extract = "".join(f" && {pspdev}/psp-objcopy -O binary -j {sec} {q(out / 'linked.elf')} "
+                          f"{q(out / (sec.strip('.') + '.bin'))}" for sec in expected_sections[p])
         # helpers= sources: each function's bytes are read from its own linked section (step 3)
         text_cmd = "" if p in fn_placement else \
-            f" && {pspdev}/psp-objcopy -O binary -j .text {to_wsl(out / 'linked.elf')} {to_wsl(out / 'text.bin')}"
-        link.append(f"{pspdev}/psp-ld -EL -e 0x{h['start']:08x} {' '.join(placed)} -o {to_wsl(out / 'linked.elf')} "
-                    f"{to_wsl(link_obj)} {to_wsl(out / 'syms.ld')} > {to_wsl(out / 'link.log')} 2>&1"
+            f" && {pspdev}/psp-objcopy -O binary -j .text {q(out / 'linked.elf')} {q(out / 'text.bin')}"
+        link.append(f"{pspdev}/psp-ld -EL -e 0x{h['start']:08x} {' '.join(placed)} -o {q(out / 'linked.elf')} "
+                    f"{q(link_obj)} {q(out / 'syms.ld')} > {q(out / 'link.log')} 2>&1"
                     + text_cmd + extract)
     if link:
-        run_wsl(link, "link")
+        run_wsl(link, "link", timeout=step_timeout(len(link)))
     # 3. compare
     cache: dict = {}
     summary = []
@@ -741,12 +818,18 @@ def build_and_compare(args, flags: str, jobs: list) -> int:
                         status = "MISMATCH"
                         detail = f"{len(body)//4}/{n} words; {len(diffs)} differ; first at +0x{diffs[0]*4:x}" if diffs else "size differs"
                         (out / "target.bin").write_bytes(target)
+        extra_syms = sorted(set(used_extra.get(p, [])))
+        if extra_syms and status in ("EXACT", "EXACT_EXTRA_FLAGS") and not detail:
+            # the bytes are equal only with names that are not committed symbols yet (--symbols-extra): said so
+            detail = f"with uncommitted --symbols-extra entries: {' '.join(extra_syms)}"
         summary.append({"source": rel, "module": h["module"], "start": f"0x{h['start']:08x}", "status": status, "detail": detail,
-                        "words_differ": words})
+                        "words_differ": words, "extra_symbols": extra_syms})
         if not args.quiet or status != "EXACT":
             print(f"{status:18s} {h['module']} 0x{h['start']:08x} {rel} {detail}")
     exact = sum(1 for s in summary if s["status"] == "EXACT")
-    print(f"EXACT {exact}/{len(summary)}" + (f" (EXACT_EXTRA_FLAGS {sum(1 for s in summary if s['status'] == 'EXACT_EXTRA_FLAGS')} under --flags {flags})" if args.flags is not None else ""))
+    with_extra = sum(1 for s in summary if s["status"] == "EXACT" and s["extra_symbols"])
+    print(f"EXACT {exact}/{len(summary)}" + (f" (EXACT_EXTRA_FLAGS {sum(1 for s in summary if s['status'] == 'EXACT_EXTRA_FLAGS')} under --flags {flags})" if args.flags is not None else "")
+          + (f" ({with_extra} of them only with uncommitted --symbols-extra entries)" if with_extra else ""))
     if args.json:
         args.json.write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
     return 0 if exact == len(summary) else 1

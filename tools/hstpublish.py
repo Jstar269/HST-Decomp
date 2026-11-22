@@ -9,6 +9,11 @@ Copies every file git tracks (`git ls-files`) into --out, byte for byte, except:
     from the sources, not read from ORIGINS.json);
   * files that git tracks although .gitignore says they are ignored (private material that was added by force).
 
+It refuses to write anything (exit status 1) when a file it would copy holds private content (PRIVATE_CONTENT: a
+maintainer's local path, a personal home directory, a private key or an access token): the export copies bytes,
+so such a line would otherwise be published unchanged. Replace the path with `<private tree>` on the private branch
+and run it again.
+
 ORIGINS.json is copied filtered: it lists only the files that were copied, so it does not name excluded sources.
 
 What was excluded is printed (counts and bytes per reason; --list prints every excluded path).
@@ -24,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -56,6 +62,37 @@ PRIVATE_PATHS = ("docs/research/", "docs/LANE-TASK.md", "docs/AGENT-BRIEF.md", "
 # ---------------------------------------------------------------------------------------------------------------
 
 MANIFEST = "ORIGINS.json"
+# Content that never leaves the private repository, whatever file holds it (public AGENTS.md section 5: nothing that
+# shows a local path). The patterns of tools/hstprcheck.py PRIVATE and the push preparation scan (hstpushprep.sh),
+# widened to the maintainer's workspace root on any drive and in its WSL and MSYS forms. Placeholders (`<you>`,
+# `/home/user`) and the well-known non-personal Windows profiles (Default, Public) stay allowed.
+# PRIVATE_PATH runs on the ASCII-lower-cased text and starts with the path separator, so the regex engine skips ahead
+# to the next slash or backslash (a scan of the whole tree takes seconds, not minutes); the drive letter, /mnt/<drive>,
+# MSYS and /home forms are checked behind it. Its forms: <drive>:\Users\<name>, the workspace root `nk` directly under
+# a drive (Windows, /mnt/<drive>/ and the MSYS /<drive>/ form), /mnt/<drive>/Users/<name> and /home/<name>, with / or
+# \ (repeated, as in escaped JSON) as separator. PRIVATE_TOKEN runs only on text that holds one of its literal
+# prefixes (_TOKEN_PREFIXES), which a substring test finds quickly.
+_NOT_PERSONAL = r"(?!<|(?:default|public|all users|test|user|you)\b)"
+PRIVATE_PATH = re.compile(
+    r"[\\/](?:(?<=[a-z]:[\\/])[\\/]*(?:users[\\/]+" + _NOT_PERSONAL + r"\w|nk\b)|"
+    r"(?<=/)mnt/[a-z]/(?:nk\b|users/" + _NOT_PERSONAL + r"\w)|(?<![\w.~-]/)[a-z]/nk\b|(?<=/)home/(?!<|user\b)\w)")
+PRIVATE_TOKEN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20}|\bgithub_pat_\w{20}|"
+                           r"\bsk-[A-Za-z0-9]{20}|\bAKIA[0-9A-Z]{16}\b")
+_TOKEN_PREFIXES = ("PRIVATE KEY-----", "ghp_", "github_pat_", "sk-", "AKIA")
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")  # keeps offsets
+
+
+def private_content(files) -> list[str]:
+    """`<path>:<line>` for each (path, bytes) that holds a PRIVATE_PATH or PRIVATE_TOKEN (the first hit per file);
+    the matched text is not repeated, so a token is not printed again."""
+    hits = []
+    for path, data in files:
+        text = data.decode("utf-8", "replace")
+        token = PRIVATE_TOKEN.search(text) if any(k in text for k in _TOKEN_PREFIXES) else None
+        found = [m.start() for m in (PRIVATE_PATH.search(text.translate(_ASCII_LOWER)), token) if m]
+        if found:
+            hits.append(f"{path}:{text.count(chr(10), 0, min(found)) + 1}")
+    return hits
 
 
 def git_lines(*args: str) -> list[str]:
@@ -102,6 +139,13 @@ def main() -> int:
             excluded["missing in the work tree"].append(path)
         else:
             keep.append(path)
+
+    hits = private_content((p, (ROOT / p).read_bytes()) for p in keep if p != MANIFEST)
+    if hits:
+        for h in hits:
+            print(f"REFUSED private content (a local path or a secret): {h}", file=sys.stderr)
+        print(f"REFUSED: {len(hits)} file(s) hold private content; nothing was written", file=sys.stderr)
+        return 1
 
     out.mkdir(parents=True, exist_ok=True)
     copied_bytes = 0

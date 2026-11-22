@@ -12,9 +12,13 @@ neither its tree nor its history contains an excluded source.
 `sync` runs hstpublish.py into a temporary directory, mirrors that tree into the public worktree (adding,
 replacing and deleting files; `.git` is left alone) and commits it there when anything changed. It never pushes.
 
+`sync` refuses to run while the full checkout has uncommitted changes to tracked files (the export copies the work
+tree, so they would be published without a commit).
+
 `check` refuses a commit whose tree contains a source (src/, wip/) that the commit's own ORIGINS.json does not
-list, or lists with an excluded class. The pre-push hook runs it on every pushed commit and refuses any ref other
-than `public`.
+list, or lists with an excluded class, and a commit any of whose files, or whose message, holds private content
+(tools/hstpublish.py PRIVATE_PATH and PRIVATE_TOKEN). The pre-push hook runs it on every pushed commit and refuses
+any ref other than `public`.
 """
 from __future__ import annotations
 
@@ -53,6 +57,12 @@ def mirror(src: Path, dst: Path) -> None:
 
 
 def sync(worktree: Path, message: str) -> int:
+    # hstpublish.py copies the work tree, not a commit: an uncommitted edit would be published without ever being
+    # committed on the private branch
+    dirty = git(ROOT, "status", "--porcelain", "--untracked-files=no").strip()
+    if dirty:
+        raise SystemExit(f"refusing to sync: {ROOT} has uncommitted changes to tracked files (commit or stash them):\n"
+                         f"{dirty[:400]}")
     if not (worktree / ".git").exists():
         raise SystemExit(f"{worktree} is not a git worktree")
     if git(worktree, "symbolic-ref", "--short", "HEAD").strip() != "public":
@@ -73,15 +83,38 @@ def sync(worktree: Path, message: str) -> int:
     return 0
 
 
+def commit_blobs(commit: str):
+    """(path, bytes) for every file of the commit's tree, then ("commit message", bytes); one `git cat-file --batch`."""
+    entries = []
+    for rec in git(ROOT, "ls-tree", "-r", "-z", commit, text=False).split(b"\0"):
+        if rec:
+            meta, path = rec.split(b"\t", 1)
+            _mode, kind, sha = meta.split()
+            if kind == b"blob":
+                entries.append((path.decode("utf-8", "replace"), sha))
+    out = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT, check=True, capture_output=True,
+                         input=b"".join(sha + b"\n" for _, sha in entries)).stdout
+    pos = 0
+    for path, sha in entries:
+        nl = out.index(b"\n", pos)
+        size = int(out[pos:nl].split()[2])
+        yield path, out[nl + 1:nl + 1 + size]
+        pos = nl + 1 + size + 1
+    yield "commit message", git(ROOT, "log", "-1", "--format=%B", commit, text=False)
+
+
 def check_tree(worktree: Path | None, commit: str | None) -> int:
-    """0 when every source in the tree is listed in its ORIGINS.json with a publishable class."""
+    """0 when every source in the tree is listed in its ORIGINS.json with a publishable class and no file (nor the
+    commit's message) holds private content (hstpublish.private_content: a local path, a home directory, a token)."""
     if commit is None:
         files = git(worktree, "ls-files").splitlines()
         origins = json.loads((worktree / "ORIGINS.json").read_text(encoding="utf-8"))
+        private = hstpublish.private_content((f, (worktree / f).read_bytes()) for f in files if (worktree / f).is_file())
     else:
         files = git(ROOT, "ls-tree", "-r", "--name-only", commit).splitlines()
         origins = json.loads(git(ROOT, "show", f"{commit}:ORIGINS.json"))
-    bad = []
+        private = hstpublish.private_content(commit_blobs(commit))
+    bad = [f"{p}: private content (a local path or a secret)" for p in private]
     for f in files:
         if f.split("/")[0] in ("src", "wip") and f.endswith((".c", ".cpp")):
             cls = origins.get(f)

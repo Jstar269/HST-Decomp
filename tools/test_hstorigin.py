@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Tests for the origin classes (hstorigin.py): synthetic sources, plus the SGX block against the committed units."""
+"""Tests for the origin classes (hstorigin.py): synthetic sources, plus the SGX block against the committed units; and
+for the publish policy built on them (hstpublish.py, hstpublic.py check), on throwaway git repositories."""
 from __future__ import annotations
 
+import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstorigin as O
@@ -81,6 +86,81 @@ class ClassTests(unittest.TestCase):
                          for a, _k in u["functions"])
             self.assertEqual((sgx[0], ends[sgx[-1]]), (lo, hi), module)
             self.assertEqual(sum(1 for s in ends if lo <= s < hi), 592, module)
+
+
+# Private forms built at run time, so this file itself holds none (the export scans every published file).
+DRIVE_ROOT = "D:" + "/" + "nk" + "/private/notes.md"
+BACKSLASH_HOME = "D:" + "\\" + "Users" + "\\" + "alice\\x"
+ESCAPED_ROOT = "D:" + "\\\\" + "nk" + "\\\\x"
+WSL_ROOT = "/mnt/d/" + "nk" + "/x"
+MSYS_ROOT = " /d/" + "nk" + "/x"
+HOME = "/" + "home/alice/x"
+TOKEN = "ghp" + "_" + "A" * 24
+
+
+class PublishScanTests(unittest.TestCase):
+    """The export (hstpublish.py) and the pre-push check (hstpublic.py check) refuse private content in any file."""
+
+    def repo(self, files: dict[str, str], message: str = "base") -> Path:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "repo"
+        root.mkdir()
+        for rel, text in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8", newline="\n")
+        for args in (("init", "-q", "-b", "full"), ("config", "user.email", "test@example.invalid"),
+                     ("config", "user.name", "test"), ("config", "core.autocrlf", "false"), ("add", "-A"),
+                     ("commit", "-q", "-m", message)):
+            subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+        return root
+
+    def test_the_patterns_find_local_roots_homes_and_tokens_but_not_placeholders(self) -> None:
+        import hstpublish
+        for text in (DRIVE_ROOT, BACKSLASH_HOME, ESCAPED_ROOT, WSL_ROOT, MSYS_ROOT, HOME, TOKEN, DRIVE_ROOT.lower()):
+            self.assertEqual(hstpublish.private_content([("f", f"a\nsee {text}\n".encode())]), ["f:2"], text)
+        for text in ("C:" + "\\Users\\<you>\\x", "C:" + "\\Users\\Default\\AppData\\Local", "C:" + "/Users/test/f.c",
+                     "/home/user/x", "/mnt/c/work/x", "https://example.invalid/d/" + "nk", "%LOCALAPPDATA%\\Android",
+                     "C:" + "\\\\Users\\\\..."):
+            self.assertEqual(hstpublish.private_content([("f", text.encode())]), [], text)
+
+    def test_the_export_refuses_a_file_with_a_local_path_and_writes_nothing(self) -> None:
+        import hstpublish
+        root = self.repo({"ORIGINS.json": "{}\n", "README.md": "public\n", "docs/notes.md": f"x\nsee {DRIVE_ROOT}\n"})
+        out = root.parent / "out"
+        err = io.StringIO()
+        with mock.patch.object(hstpublish, "ROOT", root), \
+                mock.patch.object(hstpublish.hstorigin, "classify", return_value=({}, [])), \
+                mock.patch.object(sys, "argv", ["hstpublish.py", "--out", str(out)]), redirect_stderr(err):
+            self.assertEqual(hstpublish.main(), 1)
+        self.assertFalse(out.exists())
+        self.assertIn("docs/notes.md:2", err.getvalue())
+        (root / "docs/notes.md").write_text("x\nsee <private tree>/notes.md\n", encoding="utf-8", newline="\n")
+        with mock.patch.object(hstpublish, "ROOT", root), \
+                mock.patch.object(hstpublish.hstorigin, "classify", return_value=({}, [])), \
+                mock.patch.object(sys, "argv", ["hstpublish.py", "--out", str(out)]), redirect_stdout(io.StringIO()):
+            self.assertEqual(hstpublish.main(), 0)
+        self.assertTrue((out / "docs/notes.md").is_file())
+
+    def test_the_push_check_refuses_private_content_in_a_file_or_the_message(self) -> None:
+        import hstpublic
+        # (files, commit message, check of the commit, check of the work tree: files only)
+        cases = (({"ORIGINS.json": "{}\n", "data/x.json": f'{{"p": "{ESCAPED_ROOT}"}}\n'}, "base", 1, 1),
+                 ({"ORIGINS.json": "{}\n", "README.md": "public\n"}, f"notes from {WSL_ROOT}", 1, 0),
+                 ({"ORIGINS.json": "{}\n", "README.md": "public\n"}, "clean", 0, 0))
+        for files, message, want_commit, want_tree in cases:
+            root = self.repo(files, message)
+            with mock.patch.object(hstpublic, "ROOT", root), redirect_stderr(io.StringIO()):
+                self.assertEqual(hstpublic.check_tree(None, "HEAD"), want_commit, (files, message))
+                self.assertEqual(hstpublic.check_tree(root, None), want_tree, (files, message))
+
+    def test_sync_refuses_a_full_checkout_with_uncommitted_changes(self) -> None:
+        import hstpublic
+        root = self.repo({"ORIGINS.json": "{}\n", "README.md": "public\n"})
+        (root / "README.md").write_text("edited, not committed\n", encoding="utf-8")
+        with mock.patch.object(hstpublic, "ROOT", root), self.assertRaises(SystemExit) as raised:
+            hstpublic.sync(root.parent / "public", "m")
+        self.assertIn("uncommitted changes", str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -31,7 +31,13 @@ BASE = "-c {opt} -sdatathreshold 0 {more}"
 OPTS = ("-O4,p", "-O4,s", "-O3,p", "-O3,s", "-O2,p")
 INLINES = ("", "-inline off", "-inline auto", "-inline deferred", "-inline all")
 EXTRAS = ("-opt nointrinsics", "-char unsigned", "-enum min", "-strict on", "-fp single", "-str nopool,noreuse",
-          "-inline level=2", "-inline bottomup")
+          "-inline level=2", "-inline bottomup",
+          # 2026-11-21: options a public mwccpsp 219 decomp (Monster Hunter Portable 2nd G, tclamb/mhp2g-decomp
+          # configure.py) builds with; untested here until this sweep
+          "-flag no-opt_unroll_loops", "-inline level=8", "-flag explicit_zero_data",
+          "-flag no-opt_unroll_loops -inline level=8 -flag explicit_zero_data",
+          # sotn-decomp's pspeu flags (tools/builds/gen.py): -char unsigned -fl divbyzerocheck -opt nointrinsics
+          "-fl divbyzerocheck", "-char unsigned -fl divbyzerocheck -opt nointrinsics")
 
 
 def combos(builds: list[str]) -> list[tuple[str, str, str]]:

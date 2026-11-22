@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,9 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstmatch as M  # noqa: E402
 
 
-def tiny_object(funcs: list[tuple[str, bytes]], extra_in_first: str | None = None) -> bytes:
+def tiny_object(funcs: list[tuple[str, bytes]], extra_in_first: str | None = None, undefined: tuple[str, ...] = (),
+                base: int = 0) -> bytes:
     """A little-endian ELF32 relocatable object shaped like mwccpsp output: one `.text` section per function, a symtab
-    with one FUNC symbol at offset 0 of each (and optionally a second FUNC symbol in the first section)."""
+    with one FUNC symbol at offset `base` of each (and optionally a second FUNC symbol in the first section, and
+    undefined names)."""
     names = b"\0.text\0.symtab\0.strtab\0.shstrtab\0"
     n_text, n_sym, n_str, n_shs = 1, 7, 15, 23
     strtab = b"\0"
@@ -33,11 +37,14 @@ def tiny_object(funcs: list[tuple[str, bytes]], extra_in_first: str | None = Non
         blobs.append(code)
         sections.append((n_text, 1, 6, 0, off, len(code), 0, 0, 4, 0))
         off += len(code)
-        syms.append(struct.pack("<IIIBBH", len(strtab), 0, len(code), 0x12, 0, i + 1))
+        syms.append(struct.pack("<IIIBBH", len(strtab), base, len(code), 0x12, 0, i + 1))
         strtab += name.encode() + b"\0"
     if extra_in_first:
         syms.append(struct.pack("<IIIBBH", len(strtab), 4, 4, 0x12, 0, 1))
         strtab += extra_in_first.encode() + b"\0"
+    for name in undefined:
+        syms.append(struct.pack("<IIIBBH", len(strtab), 0, 0, 0x10, 0, 0))
+        strtab += name.encode() + b"\0"
     symdata = b"".join(syms)
     for data, sec in ((symdata, (n_sym, 2, 0, 0, 0, len(symdata), len(funcs) + 2, 1, 4, 16)),
                       (strtab, (n_str, 3, 0, 0, 0, len(strtab), 0, 0, 1, 0)),
@@ -186,7 +193,7 @@ class CompilePhaseFailure(unittest.TestCase):
             build_root = tmp / "build"
             json_out = tmp / "results.json"
 
-            def fake_run_wsl(lines, name, native=None):
+            def fake_run_wsl(lines, name, native=None, **_kw):
                 if name == "compile":
                     out_dir = build_root / "EBOOT.BIN" / M.build_key(src)
                     out_dir.mkdir(parents=True, exist_ok=True)
@@ -215,7 +222,7 @@ class CompilePhaseFailure(unittest.TestCase):
             jobfile_existed = False
             jobfile_path = tmp / "build" / f"compile.{os.getpid()}.jobs"
 
-            def fake_run_wsl(lines, name, native=None):
+            def fake_run_wsl(lines, name, native=None, **_kw):
                 nonlocal jobfile_existed
                 if name == "compile":
                     jobfile_existed = jobfile_path.exists()
@@ -230,6 +237,182 @@ class CompilePhaseFailure(unittest.TestCase):
 
             self.assertTrue(jobfile_existed)
             self.assertFalse(jobfile_path.exists())
+
+
+CODE = b"\x08\x00\xe0\x03"      # jr ra: the whole 4-byte target of the end-to-end fixture below
+TARGET_HEADER = "/* HSTMATCH module=EBOOT.BIN start=0x00100000 end=0x00100004 symbol=FUN_00100000 lang=c99 */\n"
+
+
+def run_matcher(tmp: Path, obj: bytes, argv_extra: tuple[str, ...] = (), build_name: str = "build",
+                symbols_txt: str | None = None) -> tuple[int, list[dict], list]:
+    """hstmatch.main() over one source, with the WSL steps faked: compile writes `obj`, link writes a linked ELF whose
+    .text is CODE at the retail address, and the retail bytes are CODE. Returns (exit code, JSON rows, run_wsl calls)."""
+    src = tmp / "src" / "FUN_00100000.c"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text(TARGET_HEADER + "void FUN_00100000(void) {}\n", encoding="utf-8")
+    if symbols_txt is not None:
+        (tmp / "symbols").mkdir(exist_ok=True)
+        (tmp / "symbols" / "EBOOT.BIN.txt").write_text(symbols_txt, encoding="utf-8")
+    build_root = tmp / build_name
+    (tmp / "build").mkdir(exist_ok=True)       # ROOT/build holds the compile job file
+    calls = []
+
+    def fake_run_wsl(lines, name, native=None, **kw):
+        calls.append((name, list(lines), kw))
+        out = build_root / "EBOOT.BIN" / M.build_key(src)
+        if name == "compile":
+            (out / "compile.log").write_text("", encoding="utf-8")
+            (out / "obj.o").write_bytes(obj)
+        elif name == "link":
+            (out / "linked.elf").write_bytes(tiny_object([("FUN_00100000", CODE)], base=0x100000))
+            (out / "text.bin").write_bytes(CODE)
+
+    env = {"HSTMATCH_BUILD_ROOT": str(build_root), "HST_MWCC_NATIVE": "/fake/native", "HST_PSPDEV_BIN": "/fake/pspdev"}
+    with patch.dict(os.environ, env), patch.object(M, "ROOT", tmp), patch.object(M, "EXTRA_SYMBOLS", []), \
+            patch.object(M, "run_wsl", side_effect=fake_run_wsl), \
+            patch.object(M, "module_bytes", return_value=(CODE, {"file_offset": 0, "start": 0x100000})), \
+            patch.object(sys, "argv", ["hstmatch.py", "--quiet", str(src), "--json", str(tmp / "r.json"), *argv_extra]):
+        rc = M.main()
+    return rc, json.loads((tmp / "r.json").read_text(encoding="utf-8")), calls
+
+
+class HeaderValidation(unittest.TestCase):
+    """Audit 2026-11-17: header values reached the `sh -c` compile line (lang=, extra=) and the build path and link
+    lines (module=) unchecked, so a header could run a command in WSL or write outside build/."""
+
+    def header(self, fields: str) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "f.c"
+            p.write_text(f"/* HSTMATCH start=0x00100000 end=0x00100010 symbol=FUN_00100000 {fields} */\n",
+                         encoding="utf-8")
+            return M.parse_header(p)
+
+    def test_values_that_could_run_a_command_or_leave_build_are_refused(self) -> None:
+        for bad in ("module=EBOOT.BIN lang=c99;touch${IFS}x;", "module=EBOOT.BIN lang=pascal",
+                    'module=EBOOT.BIN extra="-O2;touch x"', 'module=EBOOT.BIN extra="$(id)"',
+                    'module=EBOOT.BIN extra="-o/tmp/x"', 'module=EBOOT.BIN extra="obj.o"',
+                    "module=EBOOT.BIN extra=-O2`id`", "module=../../x", "module=..", "module=EBOOT.BIN;id",
+                    "module=$(id)", "module=C:/x"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.header(bad)
+
+    def test_the_values_in_use_are_accepted(self) -> None:
+        for module in ("EBOOT.BIN", "hstp_trans_main.prx", "scePsmfP_library.prx", "libfont.prx"):
+            self.assertEqual(self.header(f"module={module}")["module"], module)
+        for lang in M.LANGS:
+            self.assertEqual(self.header(f"module=EBOOT.BIN lang={lang}")["lang"], lang)
+        h = self.header('module=EBOOT.BIN extra="-fno-omit-frame-pointer -mext"')
+        self.assertEqual(M.extra_args(h), "-fno-omit-frame-pointer -mext")
+        self.assertEqual(M.extra_args(self.header("module=EBOOT.BIN")), "")
+
+    def test_every_path_on_the_link_lines_is_quoted(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            # a build root whose name holds shell syntax (legal in a Windows directory name)
+            _rc, rows, calls = run_matcher(tmp, tiny_object([("FUN_00100000", CODE)]), build_name="b $(touch x);y")
+            self.assertEqual(rows[0]["status"], "EXACT")
+            link = [lines for name, lines, _kw in calls if name == "link"][0]
+            out = next((tmp / "b $(touch x);y" / "EBOOT.BIN").iterdir())      # the source's build directory
+            for f in ("linked.elf", "syms.ld", "link.log", "text.bin", "obj.o"):
+                self.assertIn(shlex.quote(M.to_wsl(out / f)), link[0], f)
+
+
+class SymbolMap(unittest.TestCase):
+    """Audit 2026-11-17: the map could bind FUN_/DAT_xxxxxxxx to another address, and an EXACT that needed
+    --symbols-extra entries was indistinguishable from one on committed symbols."""
+
+    def test_an_address_bearing_name_bound_elsewhere_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "symbols").mkdir()
+            committed = root / "symbols" / "EBOOT.BIN.txt"
+            extra = root / "extra.txt"
+            with patch.object(M, "ROOT", root), patch.object(M, "EXTRA_SYMBOLS", []):
+                committed.write_text("FUN_00012340 = 0x00012340;\nfoo = 0x00056780;\n", encoding="utf-8")
+                self.assertEqual(M.load_symbols("EBOOT.BIN"), {"FUN_00012340": 0x12340, "foo": 0x56780})
+                committed.write_text("FUN_00012340 = 0x00056780;\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "contradicts the address its name carries"):
+                    M.load_symbols("EBOOT.BIN")
+                committed.write_text("", encoding="utf-8")
+                extra.write_text("DAT_00012340 = 0x00056780;\n", encoding="utf-8")
+                M.EXTRA_SYMBOLS.append(extra)
+                with self.assertRaisesRegex(ValueError, "contradicts the address its name carries"):
+                    M.load_symbols("EBOOT.BIN")
+                self.assertEqual(M.load_symbols("EBOOT.BIN", include_extra=False), {})
+
+    def test_an_exact_that_needs_uncommitted_entries_says_so(self) -> None:
+        obj = tiny_object([("FUN_00100000", CODE)], undefined=("foo",))
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            (tmp / "extra.txt").write_text("foo = 0x00001234;\n", encoding="utf-8")
+            _rc, rows, _calls = run_matcher(tmp, obj, ("--symbols-extra", str(tmp / "extra.txt")), symbols_txt="")
+            self.assertEqual(rows[0]["status"], "EXACT")
+            self.assertEqual(rows[0]["extra_symbols"], ["foo"])
+            self.assertIn("uncommitted --symbols-extra entries: foo", rows[0]["detail"])
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)      # the same name committed: a plain EXACT
+            _rc, rows, _calls = run_matcher(tmp, obj, symbols_txt="foo = 0x00001234;\n")
+            self.assertEqual((rows[0]["status"], rows[0]["detail"], rows[0]["extra_symbols"]), ("EXACT", "", []))
+
+
+class StepTimeout(unittest.TestCase):
+    """Audit 2026-11-17: the compile and link steps ran with no time limit while the build-directory locks were held,
+    so a hung wibo/mwccpsp or WSL instance blocked this run and every run on the same sources forever."""
+
+    def test_a_step_that_does_not_return_is_a_tool_failure(self) -> None:
+        def hung(*args, **kwargs):
+            if kwargs.get("timeout") is None:
+                raise AssertionError("subprocess.run without a timeout: a hung step would block forever")
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        with tempfile.TemporaryDirectory() as d, patch.object(M, "ROOT", Path(d)), \
+                patch("subprocess.run", side_effect=hung) as run:
+            with self.assertRaisesRegex(M.ToolFailure, "did not finish within 240s"):
+                M.run_wsl(["true"], "compile", timeout=240)
+            argv = run.call_args[0][0]
+            self.assertEqual(argv[:6], ["wsl.exe", "-e", "timeout", "-k", "10", "240"])  # bounded in WSL too
+            self.assertEqual(list((Path(d) / "build").glob("*.sh")), [], "the script must be removed")
+
+    def test_a_step_stopped_by_the_linux_side_limit_is_a_tool_failure(self) -> None:
+        done = subprocess.CompletedProcess([], 124, stdout=b"")
+        with tempfile.TemporaryDirectory() as d, patch.object(M, "ROOT", Path(d)), \
+                patch("subprocess.run", return_value=done), patch.object(M.time, "monotonic", side_effect=[0.0, 241.0]):
+            with self.assertRaises(M.ToolFailure):
+                M.run_wsl(["true"], "link", timeout=240)
+
+    def test_both_steps_of_a_run_are_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            _rc, _rows, calls = run_matcher(Path(d), tiny_object([("FUN_00100000", CODE)]))
+            self.assertEqual([(name, kw.get("timeout")) for name, _lines, kw in calls],
+                             [("compile", M.step_timeout(1, 4)), ("link", M.step_timeout(1))])
+        self.assertEqual(M.step_timeout(9, 4), M.STEP_TIMEOUT_SECONDS * 4)
+
+
+class TargetReferences(unittest.TestCase):
+    """Audit 2026-11-17: for a multi-function run (header span longer than the target symbol), only the target's own
+    .text section was scanned, so names and data used only by the later functions in the span were not required."""
+
+    def test_a_span_that_runs_into_later_text_sections_requires_everything(self) -> None:
+        obj = tiny_object([("FUN_00100000", CODE), ("helper", b"\0" * 8)])
+        run = {"symbol": "FUN_00100000", "start": 0x100000, "end": 0x10000c}
+        self.assertEqual(M.target_references(obj, run), (None, None))
+        alone = dict(run, end=0x100004)         # the span is the target alone: the per-section scan stands
+        self.assertEqual(M.target_references(obj, alone), (set(), set()))
+
+
+class Parallelism(unittest.TestCase):
+    """Audit 2026-11-17: AGENTS.md (Shared resources) caps hstmatch.py at --parallel 4; the default was 6 and the lane
+    harvest passed 6."""
+
+    def test_default_and_lane_calls_stay_within_the_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            _rc, _rows, calls = run_matcher(Path(d), tiny_object([("FUN_00100000", CODE)]))
+            self.assertIn("xargs -0 -P 4 ", calls[0][1][0])
+        import re
+        lane = (M.ROOT / "tools" / "hstlane.py").read_text(encoding="utf-8")
+        values = [int(v) for v in re.findall(r'"--parallel", "(\d+)"', lane)]
+        self.assertTrue(values)
+        self.assertTrue(all(v <= 4 for v in values), values)
 
 
 if __name__ == "__main__":

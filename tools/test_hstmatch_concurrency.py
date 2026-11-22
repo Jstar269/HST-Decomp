@@ -62,7 +62,7 @@ class OverlappingRuns(unittest.TestCase):
             a_compiled, release_a = threading.Event(), threading.Event()
             calls: list[str] = []
 
-            def fake_run_wsl(lines, name, native=None):
+            def fake_run_wsl(lines, name, native=None, **_kw):
                 if name != "compile":
                     return
                 who = "A" if not calls else "B"
@@ -115,12 +115,12 @@ class MachineFailures(unittest.TestCase):
             return json.loads((tmp / "r.json").read_text(encoding="utf-8"))
 
     def test_a_step_that_left_no_log_is_a_status_not_a_traceback(self) -> None:
-        rows = self.run_main(lambda lines, name, native=None: None)
+        rows = self.run_main(lambda lines, name, native=None, **_kw: None)
         self.assertEqual(rows[0]["status"], "COMPILE_FAILED")
         self.assertIn("no compile.log", rows[0]["detail"])
 
     def test_a_compiler_that_died_is_not_reported_as_a_compile_error(self) -> None:
-        def fake(lines, name, native=None):
+        def fake(lines, name, native=None, **_kw):
             if name == "compile":
                 d = next(Path(os.environ["HSTMATCH_BUILD_ROOT"]).glob("EBOOT.BIN/*"))
                 (d / "compile.log").write_text("terminate called after throwing an instance of 'std::filesystem_error'\n"

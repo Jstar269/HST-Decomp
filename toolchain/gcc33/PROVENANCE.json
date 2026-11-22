@@ -13,7 +13,7 @@
    "signature": {
     "file": "gcc-3.3.3.tar.bz2.sig",
     "sig_sha256": "271019cb6740c5c58bf6d059bf81ab7e899a4533863fffad7909e310ba849408",
-    "verified_with": "gpgv --keyring gnu-keyring.gpg (the keyring lbp-decomp fetched from https://ftp.gnu.org/gnu/gnu-keyring.gpg, on disk at C:/nk/private/compilers/lbp-gcc4/src/gnu-keyring.gpg, sha256 0fe55175b96a8ea1c4b670cc3fe11d56b341e4eff81b161ea49958ae550be6ca; not fetched again)",
+    "verified_with": "gpgv --keyring gnu-keyring.gpg (the keyring lbp-decomp fetched from https://ftp.gnu.org/gnu/gnu-keyring.gpg, on disk at <private tree>/compilers/lbp-gcc4/src/gnu-keyring.gpg, sha256 0fe55175b96a8ea1c4b670cc3fe11d56b341e4eff81b161ea49958ae550be6ca; not fetched again)",
     "result": "Good signature from \"Gabriel Dos Reis <gdr@integrable-solutions.net>\", made 2004-02-21 14:45:02 EST",
     "key": "DSA 1024 B02B49DB072830FD, fingerprint C0E3B256ADCDABFEFFAF4DF2B02B49DB072830FD"
    },
