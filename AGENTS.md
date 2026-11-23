@@ -33,6 +33,23 @@ repository. Where the brief and this file disagree, the stricter rule applies.
   `data/accepted-ledger.jsonl`, `data/accepted-journal.jsonl` and the two lock files; the public tree is built by
   the maintainers' release tooling. Agents never push, publish or rewrite history.
 
+## Matching rules
+
+- **Skills.** Where your tool supports skills, use the lemiur matching skills (`orchestrator`, `matcher`,
+  `wall-identifier`, `helper-recovery`, `permute`, `decomp-code-rules`; source:
+  <https://github.com/lemiur/Game-Decompilation-Skill-For-Claude>). This file overrides their defaults.
+- **Typed struct members, never fixed-offset pointer casts.** Reach a field through a member of a declared struct or
+  class, never through a pointer plus a constant offset cast to another type. A function that uses such a cast is
+  not matched.
+- **Each type is declared once.** A type that several sources use lives in `include/hst/<topic>.h`
+  ([docs/GUIDE.md](docs/GUIDE.md), "Shared headers") and is never copied into a source.
+- **No fakematches.** Nothing is written only to steer the compiler; the `decomp-code-rules` skill lists what is a
+  fakematch and what is a genuine idiom.
+- **Readability from the first commit.** Names, types and structure are in place when a source is first committed,
+  not left for a later clean-up.
+- **Debug symbols where they exist.** Before inventing a name or a type, check debugging.games for a build of this
+  game or a related title that has symbols.
+
 ## Integrity rules (never relaxed)
 
 - **Only EXACT counts.** A source is a match only when `python tools/hstmatch.py <file>` reports `EXACT` for the
