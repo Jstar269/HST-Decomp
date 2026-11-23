@@ -407,3 +407,10 @@ path = "docs/media/hst-title-screen.png"
 precedence = "override"
 SPDX-FileCopyrightText = "2010 Sony Computer Entertainment Inc."
 SPDX-License-Identifier = "LicenseRef-Identification-Only"
+
+# The Allegrex patch to GCC 3.3 modifies GCC, so it carries GCC's licence, not the MIT of the rest of toolchain/.
+[[annotations]]
+path = "toolchain/gcc33/patches/**"
+precedence = "override"
+SPDX-FileCopyrightText = ["Copyright (C) Free Software Foundation, Inc.", "2026 Jstar269 and contributors"]
+SPDX-License-Identifier = "GPL-3.0-or-later"
