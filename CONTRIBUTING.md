@@ -190,11 +190,20 @@ there.
 
 The owner reviews every source at the end, so aim for the code the developers wrote.
 
-- Among exact variants, keep the most natural one: real control flow (loops, early returns, `switch`), structs and
-  member access instead of `*(int *)(p + 0x14)` when the layout is clear, `bool` and enums where obvious.
-- Avoid matching hacks: duplicated conditions, dummy locals or parameters that only steer register allocation,
-  `volatile`, self-assignments, gratuitous casts or `goto`. When one of them is the **only** exact form you found,
-  keep it, but name it in the note line (`matching idiom: <what>`); `hstlint.py` counts those.
+- Among exact variants, keep the most natural one: real control flow (loops, early returns, `switch`), `bool` and
+  enums where obvious.
+- **Typed structs are required for new work.** Reach a field through a struct or class member, never through
+  `*(int *)(p + 0x14)`: a new match that uses a fixed-offset cast is not accepted. Name a field by what it holds
+  when the code shows it, otherwise by its offset (`unk14`). Sources accepted before 2026-11-23 with such casts stay
+  in the byte-match figure but are not clean; a standing lane retypes them.
+- **One home per type.** A type that several sources use lives in one header, `include/hst/<topic>.h`. Edit the
+  header that owns a type; never declare the type again in a source or in a second header. A cleanup pass merges the
+  duplicates that exist.
+- Steering tricks (a duplicated condition, a dummy local or parameter that only steers register allocation,
+  `volatile`, a self-assignment, a gratuitous cast or `goto`) are allowed only when one is the **only** exact form
+  you found, and only with the marker `MATCH-PENDING matching idiom: <what>` in the note line (`hstlint.py` counts
+  those). Such a source counts in the byte-match figure, is left out of the clean figure and is queued for a real
+  fix.
 - Names: use a descriptive name only when the evidence supports it (strings, callers, documented research findings);
   otherwise keep the Ghidra address names. Never invent semantics.
 - Be consistent: one declaration per symbol across the tree (`hstlint.py` reports symbols declared with different

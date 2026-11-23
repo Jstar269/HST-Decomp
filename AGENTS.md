@@ -39,12 +39,16 @@ repository. Where the brief and this file disagree, the stricter rule applies.
   `wall-identifier`, `helper-recovery`, `permute`, `decomp-code-rules`; source:
   <https://github.com/lemiur/Game-Decompilation-Skill-For-Claude>). This file overrides their defaults.
 - **Typed struct members, never fixed-offset pointer casts.** Reach a field through a member of a declared struct or
-  class, never through a pointer plus a constant offset cast to another type. A function that uses such a cast is
-  not matched.
-- **Each type is declared once.** A type that several sources use lives in `include/hst/<topic>.h`
-  ([docs/GUIDE.md](docs/GUIDE.md), "Shared headers") and is never copied into a source.
+  class, never through a pointer plus a constant offset cast to another type. Every new match must do so, or it is
+  not accepted. A source accepted before 2026-11-23 that uses such a cast stays counted in the byte-match figure
+  (that figure is never lowered) but is not clean: a separate clean figure, to come with the tools, leaves it out,
+  and a standing lane retypes these sources.
+- **One home per type.** A type that several sources use is declared in one header under `include/hst/` and nowhere
+  else. To change or extend it, edit the header that owns it; never declare it again in a source or in a second
+  header. A cleanup pass merges the duplicates that exist.
 - **No fakematches.** Nothing is written only to steer the compiler; the `decomp-code-rules` skill lists what is a
-  fakematch and what is a genuine idiom.
+  fakematch and what is a genuine idiom. The one tolerated case is a steering trick under the `MATCH-PENDING` rule
+  below.
 - **Readability from the first commit.** Names, types and structure are in place when a source is first committed,
   not left for a later clean-up.
 - **Debug symbols where they exist.** Before inventing a name or a type, check debugging.games for a build of this
@@ -68,9 +72,12 @@ repository. Where the brief and this file disagree, the stricter rule applies.
 - **Compiler profiles.** MWCC build 219 and the Sony gcc131/gcc171 kits are the defaults; `cc=gcc402x-*` (GCC 4.0.2 +
   pspdev patch + Allegrex tuning, owner decision 2026-10-27) is secondary, only for functions the defaults cannot
   reproduce.
-- **No steering tricks presented as code.** Avoid duplicated conditions, dummy locals or parameters, `volatile`,
-  self-assignments and gratuitous casts or `goto`; when one is the only exact form found, keep it and name it in the
-  note line ("matching idiom: ..."). Note lines must be true.
+- **No steering tricks presented as code.** A duplicated condition, a dummy local or parameter, `volatile`, a
+  self-assignment, a gratuitous cast or a `goto` that is there only to steer the compiler is allowed only when it is
+  the only exact form found and the note line marks it `MATCH-PENDING matching idiom: <what>`. Such a source counts
+  in the byte-match figure, is left out of the clean figure and is queued for a real fix; without the marker it is
+  not accepted. A note written before 2026-11-23 that says only `matching idiom:` means the same. Note lines must
+  be true.
 - **Relocatable.** Name every address through a symbol (`FUN_`/`DAT_` address names, or a line appended to
   `symbols/<module>.txt`), never through a numeric constant cast to a pointer. Decode `lui`/low-half pairs with the
   sign-extended low half before naming a symbol.

@@ -253,9 +253,12 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules; the format in shor
 **Shared headers.** `include/hst/types.h` gives the fixed-width names (`u8`..`u64`, `s8`..`s64`; `bool`, `true`,
 `false` in C) that replace Ghidra's per-file typedef block (`undefined4`, `uint`, ...). Structs that several sources
 use live in `include/hst/<topic>.h` (include guard `HST_<TOPIC>_H`); unknown fields are named by offset (`unk14`).
+Each type has one home: to change or extend a type, edit the header that owns it, and never declare it again in a
+source or in a second header (a cleanup pass merges the duplicates that exist).
 A header is part of the toolchain lock, so a changed header reverifies every source that includes it.
 `python tools/hstread.py rank` lists the sources that read least like real source (address names, Ghidra locals,
-raw offset casts).
+raw offset casts). New work uses typed members and no fixed-offset casts; the earlier sources that have them stay in
+the byte-match figure but are not clean ([AGENTS.md](../AGENTS.md), "Matching rules").
 
 ## Tools
 
