@@ -109,12 +109,12 @@ under the project's MIT licence (README, Licensing).
 The sources in `src/`, the symbol maps in `symbols/` and the function boundary lists in `ghidra/` are derived from
 analysis of the game's machine code. For `EBOOT.BIN` and `hstp_trans_main.prx` that is the game's own code plus the SDK
 objects linked into it; `libfont.prx`, `scePsmfP_library.prx` and `scePsmf_library.prx` are SDK library modules. No
-game or SDK file is included. The licence the project grants for these reconstructions (GPL-3.0-or-later for `src/`,
-`wip/` and `symbols/`, README, Licensing) covers only the project's own contributions: it grants no rights in the
-original work of Sony or of the game's developer, and the question of rights in the reconstructions themselves is
-separate and not settled by this file. `tools/hstorigin.py` classifies every source by origin (`game`, `newlib`,
-`mw-runtime`, `sony-prx`, `sony-middleware-sgx`, `gcc-unattributed`) and `tools/hstpublish.py` keeps the Sony SDK classes out of a would-be
-public tree.
+game or SDK file is included. The licence the project grants for these reconstructions (CC0-1.0 for `src/`, `wip/`
+and `symbols/` since 2026-11-23, GPL-3.0-or-later before; README, License) covers only the project's own
+contributions: it grants no rights in the original work of Sony or of the game's developer, and the question of
+rights in the reconstructions themselves is separate and not settled by this file. `tools/hstorigin.py` classifies
+every source by origin (`game`, `newlib`, `mw-runtime`, `sony-prx`, `sony-middleware-sgx`, `gcc-unattributed`) and
+`tools/hstpublish.py` keeps the Sony SDK classes out of a would-be public tree.
 
 ## Third-party components present in the retail game
 

@@ -69,7 +69,8 @@ RED_HAT_DEFAULT = {   # the default copyright of COPYING.NEWLIB in each release
 ID_ORDER = ["LicenseRef-Newlib-UCB-BSD-4-Clause", "LicenseRef-Newlib-UCB-BSD-3-Clause",
             "LicenseRef-Newlib-UCB-Advertising-Notice", "LicenseRef-Newlib-Gay-AT-T", "LicenseRef-Newlib-Sun-fdlibm",
             "LicenseRef-Newlib-Red-Hat", "LicenseRef-Newlib-OAR", "LicenseRef-Newlib-Birgmeier"]
-GPL = "GPL-3.0-or-later"
+# The licence of the project's own part of a near miss in wip/ (the generic src/**, wip/** annotation of REUSE.toml).
+PROJECT_LICENCE = "CC0-1.0"
 
 LIB_NOTE = re.compile(r"Library source: newlib (?P<ver>\d+\.\d+\.\d+) (?P<dir>\w+)/(?P<file>\w+)\.c function (?P<fn>\w+)")
 # Hand-adapted sources name no release: "newlib libm <file>.c" or "newlib libc <directory> <file>.c".
@@ -211,7 +212,7 @@ class Entry:
 
     @property
     def expression(self) -> str:
-        return " AND ".join(self.ids + ([] if self.in_src else [GPL]))
+        return " AND ".join(self.ids + ([] if self.in_src else [PROJECT_LICENCE]))
 
     @property
     def statements(self) -> list[str]:

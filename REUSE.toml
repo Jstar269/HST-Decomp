@@ -5,12 +5,14 @@ SPDX-PackageName = "Hot Shots Tennis: Get a Grip (PSP) matching decompilation"
 # THIRD_PARTY.md. When several annotations match a path, the LAST one in this file is the effective one, so the
 # specific entries come after the generic ones. `python tools/hstreuse.py check` verifies the coverage.
 
-# The reconstructed code. The GPL grant covers only the project's own contributions: it grants no rights in the
-# original work of Sony Computer Entertainment, Clap Hanz or anyone else (see README.md, "Licensing").
+# The reconstructed code: CC0-1.0, a public-domain dedication (owner decision 2026-11-23; GPL-3.0-or-later until
+# then, and the revisions published under it remain available under it). CC0 covers only the project's own
+# contributions: it grants no rights in the original work of Sony Computer Entertainment, Clap Hanz or anyone else
+# (see README.md, "License").
 [[annotations]]
 path = ["src/**", "wip/**", "symbols/**"]
 SPDX-FileCopyrightText = "2026 Jstar269 and contributors"
-SPDX-License-Identifier = "GPL-3.0-or-later"
+SPDX-License-Identifier = "CC0-1.0"
 
 # Project-authored tools, documentation and headers.
 [[annotations]]
@@ -219,7 +221,7 @@ SPDX-FileCopyrightText = [
   "Copyright (C) 1993 by Sun Microsystems, Inc.",
   "2026 Jstar269 and contributors",
 ]
-SPDX-License-Identifier = "LicenseRef-Newlib-Sun-fdlibm AND GPL-3.0-or-later"
+SPDX-License-Identifier = "LicenseRef-Newlib-Sun-fdlibm AND CC0-1.0"
 
 [[annotations]]
 path = [

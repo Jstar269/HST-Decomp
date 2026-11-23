@@ -13,7 +13,7 @@
 
 [![Code matched](https://bytematch.dev/Jstar269/hst-decomp.svg?label=code%20matched&measure=matched_code_percent)](https://bytematch.dev/Jstar269/hst-decomp)
 [![Functions matched](https://bytematch.dev/Jstar269/hst-decomp.svg?label=functions&measure=matched_functions)](https://bytematch.dev/Jstar269/hst-decomp)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](#license)
+[![License: CC0-1.0](https://img.shields.io/badge/license-CC0--1.0-blue.svg)](#license)
 [![REUSE status](https://api.reuse.software/badge/github.com/Jstar269/hst-decomp)](https://api.reuse.software/info/github.com/Jstar269/hst-decomp)
 [![Platform: PSP (UCUS98701)](https://img.shields.io/badge/PSP-UCUS98701-555555.svg)](#hst-decomp)
 
@@ -128,9 +128,11 @@ appropriate.
 ## License
 
 Licensed by path ([REUSE](https://reuse.software/)): the reconstructed code (`src/`, `wip/`, `symbols/`) is
-**GPL-3.0-or-later**, the tools and docs are **MIT** (except the title-screen image, which belongs to its owners), and
-newlib-derived code keeps its own notices. The GPL covers only the project's own work, not the original game. Sony SDK
-reconstructions are not published here. Full table: [Licensing](docs/GUIDE.md#licensing).
+**CC0-1.0**, a public-domain dedication ([`LICENSE`](LICENSE)); the tools and docs are **MIT** (except the
+title-screen image, which belongs to its owners), and newlib-derived code keeps its own notices. CC0 covers only the
+project's own work, not the original game. Sony SDK reconstructions are not published here. Until 2026-11-23 the
+reconstructed code was offered under GPL-3.0-or-later; the revisions published before that date remain available
+under that licence. Full table: [Licensing](docs/GUIDE.md#licensing).
 
 ## Learn more
 

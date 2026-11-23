@@ -184,7 +184,7 @@ link, the sources left out and why.
 | `ghidra/` | The headless pseudocode export (`HstCommitDecompile.java`, `run_commit_decompile.ps1`) and the reviewed function boundaries of the two large modules. |
 | `docs/` | `MWCC-NOTES.md` (append-only log of verified compiler behaviour) and `MWCC-DIGEST.md` (the same, by topic), and `OBJDIFF.md` (the objdiff project, see `hstobjdiff.py`). |
 | `third_party/` | `newlib/`: newlib's own licence lists (`newlib-<release>-COPYING.NEWLIB`, verbatim) and the table of every newlib-derived source with its release, upstream file, terms and tarball SHA-256. |
-| `LICENSE`, `LICENSES/`, `REUSE.toml` | The licence map: `LICENSE` is the GPL-3.0 text, `LICENSES/` holds every licence text, `REUSE.toml` assigns a licence and copyright to each path (see [Licensing](#licensing)). |
+| `LICENSE`, `LICENSES/`, `REUSE.toml` | The licence map: `LICENSE` is the CC0-1.0 text, `LICENSES/` holds every licence text, `REUSE.toml` assigns a licence and copyright to each path (see [Licensing](#licensing)). |
 | `ORIGINS.json` | Origin class of every source (`python tools/hstorigin.py`), a snapshot: `hstpublish.py` classifies afresh. |
 | `hst-config.example.json` | Template for the gitignored `hst-config.json`. |
 
@@ -350,18 +350,22 @@ effective annotation.
 
 | Paths | Licence |
 |---|---|
-| `src/` (except the newlib-derived sources below), `wip/`, `symbols/`: the reconstructed code | **GPL-3.0-or-later** ([`LICENSE`](../LICENSE)) |
+| `src/` (except the newlib-derived sources below), `wip/`, `symbols/`: the reconstructed code | **CC0-1.0** ([`LICENSE`](../LICENSE)), a public-domain dedication |
 | `tools/`, `toolchain/`, `ghidra/scripts/`, `ghidra/run_commit_decompile.ps1`, `ghidra/boundaries-*.txt`, `include/`, `docs/`, `README.md`, `CONTRIBUTING.md`, `THIRD_PARTY.md`, `hst-config.example.json`, `.gitignore`, `.gitattributes`, `REUSE.toml`, `ORIGINS.json` | **MIT** |
 | The newlib-derived sources in `src/` (exactly the files `tools/hstorigin.py` classifies as `newlib`) and `third_party/` | **their own terms** (BSD-style and similar notices kept in the files) |
 
-- The GPL grant covers **only the project's own contributions**. It grants no rights in the original work of Sony
+- The CC0 dedication covers **only the project's own contributions**. It grants no rights in the original work of Sony
   Computer Entertainment, Clap Hanz or anyone else in *Hot Shots Tennis: Get a Grip*. The sources reconstruct a
   copyrighted program; they are provided for research, preservation and interoperability, and you need your own
   legally obtained copy of the game.
 - Third-party code is under its own terms: the newlib-derived sources keep newlib's notices (each file's licence is
   recorded in `REUSE.toml`, the texts are `LicenseRef-Newlib-*` in `LICENSES/`), and the tools that are needed but not
   included have their vendors' licences. See [THIRD_PARTY.md](../THIRD_PARTY.md) and [`REUSE.toml`](../REUSE.toml).
-  `wip/ieee754_powf_00008544.c` reconstructs newlib's `ef_pow.c` and carries Sun's fdlibm notice as well as the GPL.
+  `wip/ieee754_powf_00008544.c` reconstructs newlib's `ef_pow.c`: Sun's fdlibm notice applies to newlib's text and
+  CC0 to the project's own part (`LicenseRef-Newlib-Sun-fdlibm AND CC0-1.0`).
+- Until 2026-11-23 the reconstructed code was offered under GPL-3.0-or-later. The change is the decision of the
+  project's owner, the author of every commit up to that date. The revisions published before then remain available
+  under GPL-3.0-or-later; CC0-1.0 applies from that date on.
 - Sony SDK and system-library reconstructions are kept out of public releases (see
   [Origin classes and the publish filter](#origin-classes-and-the-publish-filter)).
 - This is not legal advice.

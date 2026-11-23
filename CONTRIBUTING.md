@@ -2,9 +2,12 @@
 
 Contributions are welcome: matched functions, near misses with notes, compiler lessons, tool fixes and documentation.
 This guide covers what you need, how a function is matched and checked, and what a pull request must contain.
-Contributions are licensed as [Licensing](docs/GUIDE.md#licensing) in the project guide says: GPL-3.0-or-later for
-`src/`, `wip/` and `symbols/`, MIT for the tools, documentation and headers. By opening a pull request you confirm that
-you wrote the change (or name where it came from, below) and that you may submit it under those licences.
+Contributions are licensed as [Licensing](docs/GUIDE.md#licensing) in the project guide says: CC0-1.0 (a
+public-domain dedication) for `src/`, `wip/` and `symbols/`, MIT for the tools, documentation and headers. By opening a
+pull request you confirm that you wrote the change (or name where it came from, below) and that you may submit it under
+those licences. Code derived from another project keeps that project's terms and cannot be dedicated under CC0: name
+its source, so that it gets its own entry in the licence map (newlib is the case so far; material derived from GPL
+sources stays under the GPL).
 
 **Where does a fix belong?** If the game misbehaves in the recompiled player, the cause is usually general: a missing
 or wrong system-call behaviour, an instruction form, a display-list command or a build step. That work belongs in
