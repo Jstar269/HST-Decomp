@@ -170,8 +170,9 @@ def dashboard(g: dict) -> str:
     lad, sc = g["ladder"], g["scope"]
     who = "every source, including the unpublished Sony SDK reconstructions" if g["private"] else "public sources"
     y = 0
+    t1 = P.shown(lad["t1_percent"], lad.get("t1_bytes", 0) >= sc["scope_bytes"])
     parts = [svg_open(W, 600, f"Decompilation progress: strict {lad['strict_percent']:.1f} percent; tier 1 "
-                              f"{lad['t1_percent']:.1f} percent of all {sc['scope_bytes']:,} bytes of six modules")]
+                              f"{t1} percent of all {sc['scope_bytes']:,} bytes of six modules")]
     parts.append(f'<text class="t1" x="{L}" y="34" font-size="17" font-weight="600">Hot Shots Tennis: Get a Grip, '
                  f'matching decompilation{" (PRIVATE VIEW)" if g["private"] else ""}</text>'
                  f'<text class="t3" x="{W - L}" y="34" font-size="12" text-anchor="end">{g["date"]}, {esc(who)}</text>')
@@ -180,7 +181,7 @@ def dashboard(g: dict) -> str:
                  f'<text class="t1" x="{L + 170}" y="76" font-size="14" font-weight="600">Strict 100%</text>'
                  f'<text class="t2" x="{L + 170}" y="95" font-size="12">the whole game rebuilt from source, byte for byte,</text>'
                  f'<text class="t2" x="{L + 170}" y="111" font-size="12">relocatable and reviewed (docs/COMPLETION.md)</text>')
-    parts.append(f'<text class="t1" x="{L + 520}" y="98" font-size="34" font-weight="600">{lad["t1_percent"]:.1f}%</text>'
+    parts.append(f'<text class="t1" x="{L + 520}" y="98" font-size="34" font-weight="600">{t1}%</text>'
                  f'<text class="t1" x="{L + 640}" y="78" font-size="14" font-weight="600">Tier 1</text>'
                  f'<text class="t2" x="{L + 640}" y="96" font-size="12">functions matched one at a time</text>'
                  f'<text class="t2" x="{L + 640}" y="112" font-size="12">{g["sources"]:,} sources</text>')

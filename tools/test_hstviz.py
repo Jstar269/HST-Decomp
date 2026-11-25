@@ -107,6 +107,13 @@ class DiagramTests(unittest.TestCase):
         self.assertIn("25.0%", svg)   # T1 hero
         self.assertIn("Sony modules", svg)
 
+    def test_dashboard_tier_one_reads_100_only_when_complete(self) -> None:
+        self.g["ladder"].update(t1_percent=99.999, t1_bytes=0x300 - 1)     # 99.97 %: one byte left
+        self.assertNotIn(">100.0%<", V.dashboard(self.g))
+        self.assertIn(">99.9%<", V.dashboard(self.g))
+        self.g["ladder"].update(t1_percent=100.0, t1_bytes=0x300)
+        self.assertIn(">100.0%<", V.dashboard(self.g))
+
     def test_dashboard_private_view(self) -> None:
         g_priv = dict(self.g, private=True)
         svg = V.dashboard(g_priv)

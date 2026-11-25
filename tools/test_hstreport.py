@@ -201,6 +201,53 @@ class UnitTests(unittest.TestCase):
         rep["units"][2]["functions"].pop()
         self.assertTrue(any("do not add up to its measures" in p for p in R.unit_problems(rep)))
 
+    def test_unit_problems_find_figures_that_the_units_do_not_carry(self) -> None:
+        """The report's own measures and each module's are what bytematch.dev and recomp.fyi show: a figure raised
+        above what the units hold, a share that is not the share of its counts, a unit or function claimed as matched
+        or complete without its functions, are all refused (the PR checker's report rule reads unit_problems)."""
+        def refused(change) -> list[str]:
+            rep = unit_report()
+            change(rep)
+            return R.unit_problems(rep)
+
+        self.assertEqual(R.unit_problems(unit_report()), [])
+        self.assertEqual(R.unit_problems(R.build_report(fig(), scope())), [])     # the one-unit-per-module form
+
+        def top_level_100(rep: dict) -> None:
+            m = rep["measures"]
+            m["matched_code"], m["matched_functions"] = m["total_code"], m["total_functions"]
+            m["matched_code_percent"] = m["fuzzy_match_percent"] = m["matched_functions_percent"] = 100.0
+        self.assertTrue(any(p.startswith("report matched_code ") for p in refused(top_level_100)))
+        self.assertTrue(refused(lambda r: r["measures"].update(fuzzy_match_percent=99.0)))
+        self.assertTrue(refused(lambda r: r["measures"].update(complete_units=r["measures"]["total_units"])))
+        self.assertTrue(refused(lambda r: r["categories"][0]["measures"].update(matched_code_percent=99.0)))
+        self.assertTrue(refused(lambda r: r["categories"][0]["measures"].update(complete_code="40")))
+        self.assertTrue(refused(lambda r: r.update(version=3)))
+
+        def unmatched_as_matched(rep: dict) -> None:
+            unit = next(u for u in rep["units"] if "not-yet-recovered" in u["name"])
+            unit["functions"][0]["fuzzy_match_percent"] = 100.0
+        self.assertTrue(any("do not add up to its measures" in p for p in refused(unmatched_as_matched)))
+
+        def source_as_complete(rep: dict) -> None:
+            next(u for u in rep["units"] if u["name"] == "src/a/x.c")["metadata"]["complete"] = True
+        self.assertTrue(refused(source_as_complete))
+
+        def near_miss_counted(rep: dict) -> None:
+            unit = next(u for u in rep["units"] if "not-yet-recovered" in u["name"])
+            unit["functions"][0]["fuzzy_match_percent"] = 95.0
+        self.assertTrue(refused(near_miss_counted))
+
+        def sdk_share(rep: dict) -> None:
+            next(u for u in rep["units"] if u["name"].endswith(R.SDK_UNIT))["measures"]["fuzzy_match_percent"] = 50.0
+        self.assertTrue(refused(sdk_share))
+
+    def test_the_pr_checker_refuses_a_raised_report_figure(self) -> None:
+        rep = unit_report()
+        m = rep["measures"]
+        m["matched_code"], m["matched_code_percent"], m["fuzzy_match_percent"] = m["total_code"], 100.0, 100.0
+        self.assertTrue(hstprcheck.report_problems(R.render(rep).encode()))
+
     def test_write_refuses_units_that_do_not_add_up(self) -> None:
         f, sc, led = unit_inputs()
         f["modules"]["A.BIN"]["functions"] += 1          # the figures and the ledger disagree

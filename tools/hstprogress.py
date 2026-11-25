@@ -69,6 +69,21 @@ COLUMNS = ["date", "source", "matched_functions", "total_functions", "matched_co
 AWAITING = re.compile(r"await human review", re.I)
 
 
+def share(part: int, whole: int, digits: int = 3) -> float:
+    """100 * part / whole rounded to `digits` decimals, but never 100 while part < whole: 99.9996 % of the bytes is
+    shown as 99.999, not 100.000 (a figure reads as complete only when it is)."""
+    if not whole:
+        return 0.0
+    value = round(100 * part / whole, digits)
+    return min(value, round(100 - 10 ** -digits, digits)) if part < whole else value
+
+
+def shown(value: float, complete: bool, digits: int = 1) -> str:
+    """`value` (a percentage) as text with `digits` decimals, never "100.0" unless `complete`."""
+    text = f"{value:.{digits}f}"
+    return f"{100 - 10 ** -digits:.{digits}f}" if not complete and float(text) >= 100 else text
+
+
 def public_modules() -> list[str]:
     doc = json.loads((ROOT / "data" / "modules.json").read_text(encoding="utf-8"))
     return [m["name"] for m in doc["modules"]]
@@ -188,9 +203,8 @@ def measure(modules: list[str] | None = None, root: Path = ROOT, include_exclude
         per_module[m["name"]] = row
         for k in total:
             total[k] += row[k]
-    total["percent_code_bytes"] = round(100 * total["matched_code_bytes"] / total["code_bytes"], 3) if total["code_bytes"] else 0.0
-    total["percent_publishable"] = (round(100 * total["matched_code_bytes"] / total["publishable_code_bytes"], 3)
-                                    if total["publishable_code_bytes"] else 0.0)
+    total["percent_code_bytes"] = share(total["matched_code_bytes"], total["code_bytes"])
+    total["percent_publishable"] = share(total["matched_code_bytes"], total["publishable_code_bytes"])
     return {"modules": per_module, "total": total, "sources": len(src), "near_misses": wip_public,
             "provenance_notes_awaiting_review": awaiting, "human_reviewed": reviewed_count(src, root),
             "blocked_entries": len(blocked), "source_rows": src}
@@ -248,8 +262,8 @@ def tier_ladder(scope_bytes: int, t1_bytes: int, reports: dict[str, dict], publi
     built = max((r["built"] for r in reports.values() if r.get("built")), default=None)
     return {"scope_bytes": scope_bytes, "t1_bytes": t1_bytes, "t2_bytes": t2, "t3_bytes": t3, "t4_bytes": 0,
             "t2_built": built,
-            "t1_percent": round(100 * t1_bytes / scope_bytes, 3), "t2_percent": round(100 * t2 / scope_bytes, 3),
-            "t3_percent": round(100 * t3 / scope_bytes, 3), "t4_percent": 0.0, "strict_percent": 0.0}
+            "t1_percent": share(t1_bytes, scope_bytes), "t2_percent": share(t2, scope_bytes),
+            "t3_percent": share(t3, scope_bytes), "t4_percent": 0.0, "strict_percent": 0.0}
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -290,7 +304,8 @@ def badge(ladder: dict) -> dict:
     s = ladder["strict_percent"]
     color = "red" if s < 10 else "orange" if s < 25 else "yellow" if s < 50 else "yellowgreen" if s < 75 else "brightgreen"
     return {"schemaVersion": 1, "label": "strict match",
-            "message": f"{s:.1f}% (tier 1: {ladder['t1_percent']:.1f}%)", "color": color}
+            "message": f"{shown(s, s >= 100)}% (tier 1: "
+                       f"{shown(ladder['t1_percent'], ladder['t1_bytes'] >= ladder['scope_bytes'])}%)", "color": color}
 
 
 def compare_readme(fig: dict) -> list[str]:
@@ -360,7 +375,8 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
     t = fig["total"]
     names = {"EBOOT.BIN": "`EBOOT.BIN`", "hstp_trans_main.prx": "`hstp_trans_main.prx` (Sharing Version)"}
     rows = [f"| {names.get(n, f'`{n}`')} | {r['matched_functions']:,} / {r['functions']:,} | "
-            f"{r['matched_code_bytes']:,} / {r['code_bytes']:,} | {100 * r['matched_code_bytes'] / r['code_bytes']:.3f} % |"
+            f"{r['matched_code_bytes']:,} / {r['code_bytes']:,} | "
+            f"{share(r['matched_code_bytes'], r['code_bytes']):.3f} % |"
             for n, r in fig["modules"].items()]
     readme = "\n".join([
         f"**{fig['sources']:,} exact sources** ({t['matched_functions']:,} functions) and {fig['near_misses']:,} near "
@@ -379,15 +395,20 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
     glance = "\n".join([
         "| | Progress | What it counts |",
         "|---|---|---|",
-        f"| **Code matched** (T1) | **{t['percent_code_bytes']:.1f}%** | {t['matched_code_bytes']:,} of the "
+        f"| **Code matched** (T1) | **{shown(t['percent_code_bytes'], t['matched_code_bytes'] >= t['code_bytes'])}%** | "
+        f"{t['matched_code_bytes']:,} of the "
         f"{t['code_bytes']:,} code bytes of the game's functions come from C or C++ that compiles, function by "
         "function, to the game's exact bytes. |",
-        f"| **Functions matched** (T1) | **{100 * t['matched_functions'] / t['functions']:.1f}%** | "
+        f"| **Functions matched** (T1) | "
+        f"**{shown(100 * t['matched_functions'] / t['functions'], t['matched_functions'] >= t['functions'])}%** | "
         f"{t['matched_functions']:,} of the {t['functions']:,} game functions. |",
-        f"| **Publishable code matched** (T1) | **{t['percent_publishable']:.1f}%** | {t['matched_code_bytes']:,} of "
+        f"| **Publishable code matched** (T1) | "
+        f"**{shown(t['percent_publishable'], t['matched_code_bytes'] >= t['publishable_code_bytes'])}%** | "
+        f"{t['matched_code_bytes']:,} of "
         f"the {t['publishable_code_bytes']:,} code bytes this repository can carry: the game's functions without the "
         "Sony SDK and middleware code known so far (that code comes from the player's own copy). |",
-        f"| **Built from source** (T2) | **{ladder['t2_percent']:.1f}%** | The share of the game's program files "
+        f"| **Built from source** (T2) | **{shown(ladder['t2_percent'], ladder['t2_bytes'] >= ladder['scope_bytes'])}%** | "
+        "The share of the game's program files "
         "that the whole build reproduces, byte for byte, from this source. |",
         "",
         "Code and functions matched are the figures the trackers "
@@ -420,7 +441,7 @@ def render_blocks(fig: dict, ladder: dict, kinds: dict, date: str) -> dict[str, 
     scope = f"the six modules in scope, {ladder['scope_bytes']:,} B"
     module_rows = [f"| {names.get(n, f'`{n}`')} code | {r['matched_code_bytes']:,} B ({r['matched_functions']:,} "
                    f"functions) | {r['code_bytes']:,} B ({r['functions']:,} functions) | "
-                   f"{100 * r['matched_code_bytes'] / r['code_bytes']:.3f}% |" for n, r in fig["modules"].items()]
+                   f"{share(r['matched_code_bytes'], r['code_bytes']):.3f}% |" for n, r in fig["modules"].items()]
     figures = "\n".join([
         f"Measured {date} from the public sources: {fig['sources']:,} exact sources and {fig['near_misses']:,} near "
         "misses.",
