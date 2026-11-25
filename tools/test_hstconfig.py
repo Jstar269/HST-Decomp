@@ -165,6 +165,61 @@ class ConfigTests(unittest.TestCase):
         mock_run.return_value.returncode = 1
         self.assertFalse(hstconfig._wsl_exists("/invalid/path"))
 
+    @patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "wsl.exe"))
+    def test_wsl_exists_without_wsl_exe_is_a_config_error(self, _mock_run) -> None:
+        # off Windows (or without WSL) `check` used to end in a FileNotFoundError traceback
+        with self.assertRaises(hstconfig.ConfigError) as ctx:
+            hstconfig._wsl_exists("/opt/pspdev/bin/psp-ld")
+        self.assertIn("wsl.exe was not found", str(ctx.exception))
+
+    def test_the_example_config_loads_as_documented(self) -> None:
+        # docs/GUIDE.md, Setup step 3: copy hst-config.example.json to hst-config.json, then check
+        example = Path(hstconfig.__file__).resolve().parents[1] / "hst-config.example.json"
+        self.config_file.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+        hstconfig._file_cache = None
+        data = json.loads(example.read_text(encoding="utf-8"))
+        keys = [k for k in data if not k.startswith("_")]
+        self.assertEqual(sorted(set(keys) - set(hstconfig.KEYS)), [], "example keys hstconfig.py does not know")
+        for key in keys:
+            self.assertEqual(hstconfig.get(key), data[key].strip())
+            self.assertIn("_" + key, data, f"the example documents no _{key} comment")
+
+    # the 13 settings hstconfig.py accepted before host_clang and android_ndk were added
+    MAIN_KEYS = ("campaign_root", "pspdev_bin", "mwcc_native", "gcc_home", "gcc4_home", "newlib_home",
+                 "newlib_obj_root", "ext_root", "nakagawa_root", "mwcc_builds_dir", "wibo_exe", "ghidra_headless",
+                 "java_home")
+
+    def _check_exit(self) -> int:
+        hstconfig._file_cache = None
+        with patch.object(sys, "argv", ["hstconfig.py", "check"]), \
+             patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO), \
+             patch.object(hstconfig, "_wsl_exists", return_value=True):
+            return hstconfig.main()
+
+    def _settings_for(self, keys) -> dict:
+        settings = {}
+        for key in keys:
+            spec = hstconfig.KEYS[key]
+            base = self.tmppath / "host" / key
+            if spec.kind != "wsl" and spec.probe:
+                (base / spec.probe).parent.mkdir(parents=True, exist_ok=True)
+                (base / spec.probe).write_text("", encoding="utf-8")
+            elif spec.kind != "wsl":
+                base.mkdir(parents=True, exist_ok=True)
+            settings[key] = str(base) if spec.kind != "wsl" else "/opt/" + key
+        return settings
+
+    def test_check_passes_a_config_without_the_optional_compilers(self) -> None:
+        # a config that sets every key main accepted (13) must still pass `check`
+        self.config_file.write_text(json.dumps(self._settings_for(self.MAIN_KEYS)), encoding="utf-8")
+        self.assertEqual(self._check_exit(), 0)
+
+    def test_check_reports_a_configured_optional_compiler_that_is_missing(self) -> None:
+        settings = self._settings_for(self.MAIN_KEYS)
+        settings["host_clang"] = str(self.tmppath / "absent" / "clang.exe")
+        self.config_file.write_text(json.dumps(settings), encoding="utf-8")
+        self.assertEqual(self._check_exit(), 1)
+
     def test_main_get(self) -> None:
         os.environ["HST_CAMPAIGN_ROOT"] = "/test/campaign"
         with patch.object(sys, "argv", ["hstconfig.py", "get", "campaign_root"]), \
