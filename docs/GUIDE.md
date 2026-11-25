@@ -130,6 +130,22 @@ match) and `EXACT_FAILS_GATE` (the bytes match but the source fails the fake-mat
 instructions (other than VFPU-only inline asm under the `asm=vfpu` rule), `.word`/`.byte`/`.incbin`, code-emitting pragmas, or `extra=` in `src/`; it never counts either), and `UNPLACED_FUNCTION` (a `helpers=` source defines a function its header does not place). `--json out.json` writes the results (with `words_differ` per source). A source whose target depends on a `static` helper defined earlier in the same file lists it in the header, `helpers=NAME@0xSTART-0xEND[,...]`: mwccpsp emits every function in its own `.text` section, so each function is linked and compared at its own retail address, and the file is EXACT only when all of them match ([CONTRIBUTING.md](../CONTRIBUTING.md#same-file-static-helpers), "Same-file static helpers"); the source claims only the target's range. Build products go to `build/<module>/<dir>__<stem>__<digest>/` (the digest is a short hash of the source's path, so equally named sources in different trees never share them); a full rebuild
 shares `build/` with any concurrent run, so run one at a time.
 
+### Verify a pushed pull-request commit
+
+With the compilers, the campaign directory and `hst-config.json` set up, check out the pull request's head commit and
+run `python tools/hstmatchgate.py <full head SHA>`. The gate refuses a different HEAD and any staged, unstaged or
+untracked change; gitignored local files (`hst-config.json`, `build/`, and `try/` with the whole-module build reports
+that the progress figures read) may stay. Leave the checkout alone until the run finishes, and start no other
+`hstmatch.py` run meanwhile.
+
+The command prints the SHA and the path of a log in the checkout's Git directory, then returns while a detached run
+continues (closing the terminal does not stop it). The run checks the checkout again after the last tool. Both trees
+run `hstmatch.py --all --parallel 4`. The public tree then runs `hstprogress.py --check-readme` (the README table,
+`docs/objdiff-report.json` and the generated figure blocks against the tree); the maintainers' tree, which has the
+accepted ledger, runs `hstproof.py check` and `hstcov.py --proofs`. The log has one `PASS` or `FAIL` line per tool and
+ends with `DONE PASS <sha>` or `DONE FAIL <sha>`; a log without that last line is incomplete. Keep the log private if
+it names local paths.
+
 ## Whole-module build
 
 `hstmatch.py` proves one function at a time. `python tools/hstbuild.py <module>` (a module name, or `all`) is the step
@@ -268,6 +284,7 @@ the byte-match figure but are not clean ([AGENTS.md](../AGENTS.md), "Matching ru
 | Tool | Purpose |
 |---|---|
 | `hstmatch.py` | The matcher: compile, link at the retail address, compare bytes exactly. |
+| `hstmatchgate.py` | `<full SHA>`: refuses unless the checkout is clean and HEAD is that commit, then runs the whole match and progress check detached and logs PASS or FAIL per tool and a final `DONE PASS <sha>` or `DONE FAIL <sha>`. See [Verify a pushed pull-request commit](#verify-a-pushed-pull-request-commit). |
 | `hstxverify.py` | Parse ELF artifacts with a second implementation, enforce reviewed function spans, and optionally rebuild with the pinned compiler and linker. |
 | `hstbuild.py` | The whole-module build: compiles the sources as `hstmatch.py` does, scaffolds every byte no source covers from the retail module, links in retail order and compares section by section and as a whole image (`docs/COMPLETION.md`, tier 2). See [Whole-module build](#whole-module-build). |
 | `hstdiff.py` | After a matcher run, print our disassembly next to retail's. |
