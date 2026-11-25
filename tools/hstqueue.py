@@ -29,7 +29,8 @@ earlier batches, src/, wip/ and data/blocked_functions.json), in this order of t
 
 A function covered by a source in src/ or listed in data/blocked_functions.json is never offered, and neither is
 any address of a batch whose lane is not finished (hstattempts.py: "reserved"; a lane is finished once try/harvest-
-<lane>/ exists or it wrote a REPORT.md), so batches made at different times stay disjoint. --near off keeps near
+<lane>/ exists or it wrote a REPORT.md), so batches made at different times stay disjoint, nor a function that an open
+good first issue holds for contributors (data/starter-issues.json, reserved the same way). --near off keeps near
 misses out, --near only offers nothing else, --near-max-left N drops near misses with more than N words left (and
 unmeasured ones). Within a tier the order is the old one (twins first, then the generated-candidate distance; with
 --execution-rank, observed entry-weighted functions lead); --fresh-order bytes ranks the fresh tier by code bytes

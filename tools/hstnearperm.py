@@ -84,7 +84,7 @@ def main() -> int:
     report = json.loads((ROOT / "try" / "nearmiss-report.json").read_text(encoding="utf-8"))
     classes = set(args.classes.split(","))
     levers = set(args.levers.split(","))
-    attempts = A.collect()          # reserved addresses (batches of lanes that are not finished) are never touched
+    attempts = A.collect()          # reserved addresses (unfinished lane batches, starter issues) are never touched
     src = attempts.src
     chosen = {Path(f).as_posix() for f in args.files}
     seeds = []
@@ -107,7 +107,7 @@ def main() -> int:
         seeds.append(row)
     if args.limit:
         seeds = seeds[:args.limit]
-    print(f"seeds={len(seeds)} (skipped {reserved} reserved by lane batches) classes={sorted(classes)} levers={sorted(levers)} max_left={args.max_left}", flush=True)
+    print(f"seeds={len(seeds)} (skipped {reserved} reserved by lane batches or starter issues) classes={sorted(classes)} levers={sorted(levers)} max_left={args.max_left}", flush=True)
     state, owner, ends = {}, {}, {}
     symbols, originals, mwcc = {}, {}, set()
     for idx, row in enumerate(seeds):

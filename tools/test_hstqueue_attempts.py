@@ -70,6 +70,84 @@ class BlockedListTests(unittest.TestCase):
         self.assertNotRegex(text, r"[A-Za-z]:[\\/]")    # address-only: no workstation paths
 
 
+class StarterListTests(unittest.TestCase):
+    def write(self, directory: str, doc: dict) -> Path:
+        path = Path(directory) / "starters.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def test_rejects_malformed_entries_duplicates_and_wrong_schema(self) -> None:
+        entry = {"module": "EBOOT.BIN", "start": "0x00001000", "issue": 62}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(A.load_starters(Path(tmp) / "missing.json"), {})
+            self.assertEqual(list(A.load_starters(self.write(tmp, {"schema": A.STARTER_SCHEMA, "entries": [entry]}))),
+                             [("EBOOT.BIN", 0x1000)])
+            for bad in ([entry, entry], [dict(entry, bytes="deadbeef")], [dict(entry, issue="62")],
+                        [dict(entry, issue=True)], [dict(entry, issue=0)], [dict(entry, start="0x1000")],
+                        [dict(entry, module="other.prx")], [dict(entry, notes=5)]):
+                with self.assertRaises(ValueError, msg=repr(bad)):
+                    A.load_starters(self.write(tmp, {"schema": A.STARTER_SCHEMA, "entries": bad}))
+            with self.assertRaises(ValueError):
+                A.load_starters(self.write(tmp, {"schema": "other", "entries": [entry]}))
+
+    def test_the_committed_list_is_well_formed_and_names_only_open_functions(self) -> None:
+        starters = A.load_starters()
+        self.assertTrue(starters)
+        src, wip = A.scan_sources()
+        for (module, start), ent in starters.items():
+            self.assertNotIn((module, start), src, f"{hex(start)} is matched: close the entry for #{ent['issue']}")
+            self.assertTrue(wip.get(module, {}).get(start), f"{hex(start)} has no wip/ file for the issue to point at")
+
+
+class StarterReservationTests(unittest.TestCase):
+    """A starter function is reserved for contributors until a source covers it."""
+
+    def build(self, tmp: Path, entries: list[dict]) -> A.Attempts:
+        (tmp / "queue").mkdir()
+        (tmp / "root" / "src" / "eboot").mkdir(parents=True)
+        (tmp / "root" / "wip").mkdir()
+        (tmp / "root" / "data").mkdir()
+        (tmp / "root" / "wip" / "g_00002000.c").write_text(HEADER.format(start=0x2000, end=0x2140) + "int x;\n", encoding="utf-8")
+        (tmp / "root" / "src" / "eboot" / "f_00001000.c").write_text(HEADER.format(start=0x1000, end=0x1140) + "int x;\n", encoding="utf-8")
+        (tmp / "root" / "data" / "starter-issues.json").write_text(
+            json.dumps({"schema": A.STARTER_SCHEMA, "entries": entries}), encoding="utf-8")
+        return A.collect(("EBOOT.BIN",), queue_dir=tmp / "queue", blocked_path=tmp / "none.json", ext_root=None,
+                         measurements={"wip/g_00002000.c": {"words_left": 2, "measured": "2026-11-25"}}, root=tmp / "root",
+                         sizes={"EBOOT.BIN": {0x1000: 0x1140, 0x2000: 0x2140, 0x3000: 0x3040}})
+
+    def test_a_starter_near_miss_is_reserved_and_never_offered_or_permuted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00002000", "issue": 62}])
+            row = att.status("EBOOT.BIN", 0x2000)
+            self.assertEqual((row["status"], row["words_left"]), ("near", 2))     # the attempt record is unchanged
+            self.assertEqual(row["reserved_by"], ["starter-issue-#62"])
+            self.assertEqual(row["starter_issue"], 62)
+            self.assertIsNone(Q.offer_tier([row]))
+            self.assertIsNone(Q.offer_tier([None, row]))                          # its whole clone family waits too
+            self.assertEqual(att.summary["main_tree"]["starter_entries"], 1)
+
+    def test_a_starter_that_nothing_mentions_gets_a_reserved_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00003000", "issue": 70}])
+            row = att.status("EBOOT.BIN", 0x3000)
+            self.assertEqual((row["status"], row["evidence"], row["reserved_by"]),
+                             ("untouched", "starter-issue", ["starter-issue-#70"]))
+            self.assertIsNone(Q.offer_tier([row], include_unrecorded=True))
+
+    def test_a_covered_starter_is_not_reserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00001000", "issue": 62}])
+            row = att.status("EBOOT.BIN", 0x1000)
+            self.assertEqual(row["status"], "exact")
+            self.assertNotIn("reserved_by", row)
+            self.assertEqual(A.cmd_starters(Path(tmp) / "root"), 1)          # the check flags the entry to remove
+
+    def test_the_check_passes_while_every_starter_is_open(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00002000", "issue": 62}])
+            self.assertEqual(A.cmd_starters(Path(tmp) / "root"), 0)
+
+
 class SpanTests(unittest.TestCase):
     def test_a_multi_function_source_covers_the_functions_inside_its_span(self) -> None:
         src = {("EBOOT.BIN", 0x100): {"start": 0x100, "end": 0x200}, ("EBOOT.BIN", 0x400): {"start": 0x400, "end": 0x440}}
