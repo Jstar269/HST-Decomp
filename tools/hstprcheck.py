@@ -214,13 +214,19 @@ def base_sdk_units(repo: Path, base: str, into: Path) -> Path:
 
 
 def gate_findings(file: Path, repo: Path, units_root: Path) -> list:
-    """hstgate.check_file, with the SDK units read under units_root (the base's) instead of the pull request's."""
+    """hstgate.check_file, with the SDK units read under units_root (the base's) instead of the pull request's.
+    Project headers are still resolved in the working tree (repo): where hstgate checks the headers a source includes
+    (included_findings), their refusals count here as they do in check_file."""
     text = file.read_text(encoding="utf-8", errors="replace")
     header = None
     m = re.search(r"/\*\s*HSTMATCH\s+(.*?)\*/", text[:2000], re.S)
     if m:
         header = {k: v.strip('"') for k, v in re.findall(r'(\w+)=("[^"]*"|\S+)', m.group(1))}
-    return hstgate.check_text(text, header, hstgate.tree_of(file, repo), units_root)
+    found = hstgate.check_text(text, header, hstgate.tree_of(file, repo), units_root)
+    included = getattr(hstgate, "included_findings", None)
+    if included is not None:
+        found += included(file, repo)
+    return sorted(found, key=lambda f: (f.line, f.kind))
 
 
 def check(repo: Path, base: str) -> list[str]:

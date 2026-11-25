@@ -188,6 +188,20 @@ class PrCheckTests(unittest.TestCase):
         got = [r.split()[0] + " " + r.split()[1] for r in self.refusals()]
         self.assertEqual(got, ["gate src/eboot/FUN_00010010.c:"])
 
+    @unittest.skipUnless(hasattr(P.hstgate, "included_findings"), "this hstgate does not check included headers")
+    def test_the_headers_a_source_includes_are_gated_with_the_bases_sdk_units(self) -> None:
+        # the gate's transitive header check must still run when prcheck supplies the base's SDK units
+        include = lambda name: GOOD.replace(NOTE, NOTE + f'#include "{name}"\n')
+        self.write("include/plain.h", "struct S { int a; };\n")
+        self.write("include/emits.h", 'static void g(void) { asm("addiu $2,$2,1"); }\n')
+        self.write("src/eboot/FUN_00010000.c", include("plain.h"))
+        self.commit("ordinary header")
+        self.assertEqual(self.refusals(), [])
+        self.write("src/eboot/FUN_00010000.c", include("emits.h"))
+        self.commit("header that emits instructions")
+        got = [r.split()[0] + " " + r.split()[1] for r in self.refusals()]
+        self.assertEqual(got, ["gate src/eboot/FUN_00010000.c:"])
+
     def test_note_rules_agree_with_published_sources(self) -> None:
         body = "int FUN_00010000(void) { return 0; }\n"
         # a docs/DATA-TABLES.md pointer between the header and the note, as 44 published sources carry
