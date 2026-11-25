@@ -122,8 +122,8 @@ def gather(private: bool = False) -> dict:
                 st = "blocked"
             else:
                 r = attempts.get((name, a))
-                if r and r.get("reserved_by"):
-                    st = "lane"
+                if r and any(not b.startswith(A.STARTER_RESERVATION) for b in r.get("reserved_by", [])):
+                    st = "lane"             # a batch of a lane that has not finished (a starter issue is not one)
                 elif r and r["status"] == "near":
                     st = "near"
                 elif r and r["status"] == "skip":

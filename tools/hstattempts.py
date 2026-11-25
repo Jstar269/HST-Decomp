@@ -73,6 +73,7 @@ UNBUILDABLE_CLASSES = ("tool_state",)   # hstnearmiss classes of a file that doe
 BLOCKED_SCHEMA = "hst-decomp.blocked-functions.v1"
 STARTER_SCHEMA = "hst-decomp.starter-issues.v1"
 STARTER_RELPATH = Path("data") / "starter-issues.json"
+STARTER_RESERVATION = "starter-issue-#"     # reserved_by entry of a starter function; every other entry is a batch
 MODULES = ("EBOOT.BIN", "hstp_trans_main.prx")
 
 PROGRESS_LINE = re.compile(r"^\s*(0x[0-9a-fA-F]+)\s+(EXACT|NEAR|SKIP)\b\s*(.*?)\s*$", re.I)
@@ -503,6 +504,14 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
         if reserved and row["status"] != "exact":
             row["reserved_by"] = reserved
 
+    # blocked-list entries that no queue or lane ever mentioned still get a row (before the span coverage below, which
+    # may cover them too)
+    for (module, start), ent in blocked.items():
+        if module in modules and (module, start) not in rows:
+            r = row_for(module, start)
+            r.update(status="exact" if (module, start) in src else "blocked", reason=ent["reason"],
+                     evidence="blocked-list", notes=ent.get("notes", ""))
+
     # span coverage: functions inside a multi-function source count as exact (as hstcov does)
     for module in modules:
         starts, maxend = exact_spans(src, module)
@@ -522,7 +531,7 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
             continue
         if row["evidence"] == "queued-no-record" and not row["batches"]:
             row["evidence"] = "starter-issue"            # no batch ever listed it: the issue is its only record
-        row["reserved_by"] = list(row.get("reserved_by", [])) + [f"starter-issue-#{ent['issue']}"]
+        row["reserved_by"] = list(row.get("reserved_by", [])) + [f"{STARTER_RESERVATION}{ent['issue']}"]
 
     # underlying status of blocked rows, for the report
     for (module, start), row in rows.items():
@@ -530,12 +539,6 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
             lane_view = [lr.status.lower() for lane in lanes.values() for a_, lr in lane.records.items() if a_ == start]
             row["lane_view"] = lane_view[-1] if lane_view else ("near" if wip.get(module, {}).get(start) else "")
             row["notes"] = blocked[(module, start)].get("notes", "")
-    # blocked-list entries that no queue or lane ever mentioned still get a row
-    for (module, start), ent in blocked.items():
-        if module in modules and (module, start) not in rows:
-            r = row_for(module, start)
-            r.update(status="exact" if (module, start) in src else "blocked", reason=ent["reason"],
-                     evidence="blocked-list", notes=ent.get("notes", ""))
 
     lane_table = {}
     for batch in batches.values():
@@ -591,6 +594,7 @@ def cmd_blocked() -> int:
     blocked = load_blocked()
     src, _wip = scan_sources()
     sizes = {m: ledger_functions(m) for m in MODULES}
+    spans = {m: exact_spans(src, m) for m in MODULES}
     bad = 0
     by_reason = Counter()
     for (module, start), ent in sorted(blocked.items()):
@@ -601,6 +605,8 @@ def cmd_blocked() -> int:
             problems.append("not a ledger function start")
         if (module, start) in src:
             problems.append(f"has a source ({src[(module, start)]['path']}): remove it from the blocked list")
+        elif known and module in spans and covered_by_span(*spans[module], start, sizes[module][start]):
+            problems.append("a multi-function source covers it: remove it from the blocked list")
         if problems:
             bad += 1
             print(f"PROBLEM {module} {_hex(start)}: {'; '.join(problems)}")
