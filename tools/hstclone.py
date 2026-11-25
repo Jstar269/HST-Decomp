@@ -10,7 +10,8 @@ mapping from the two retail byte streams. It then rewrites the exemplar's addres
 (FUN_/DAT_/LAB_/PTR_/jtbl_), with data references allowed a constant symbol+offset shift. Every
 occurrence of the exemplar's own address (function and class names) is retargeted, and the
 header's start, end and symbol are set to the clone's. Only candidates that hstmatch.py reports
-EXACT are written to src/, with a provenance note naming the exemplar.
+EXACT are written to src/, with a provenance note naming the exemplar. A starter function that an open good first
+issue holds (data/starter-issues.json) is never a clone target: its contributor matches it.
 """
 from __future__ import annotations
 
@@ -240,6 +241,9 @@ def main() -> int:
             sources[h["module"]][h["start"]] = p
     exemplars: dict[int, Path] = sources[source_module]
     matched_targets = set(sources[args.module])
+    import hstattempts as A   # here, not at the top: hstattempts' users import this module too
+    # an open good first issue holds these for new contributors (data/starter-issues.json): never a clone target
+    held = {s for (m, s) in A.load_starters(M.ROOT / A.STARTER_RELPATH) if m == args.module}
     if args.public_only:
         import hstorigin
         import hstpublish
@@ -269,7 +273,7 @@ def main() -> int:
         if not same_module:
             text = text.replace(f"module={source_module}", f"module={args.module}", 1)
         for t_start in by_sig[sig]:
-            if t_start in matched_targets or (same_module and t_start == e_start):
+            if t_start in matched_targets or t_start in held or (same_module and t_start == e_start):
                 continue
             t_end, (_sig, t_refs) = functions[t_start]
             maps = mapping(e_refs, t_refs)

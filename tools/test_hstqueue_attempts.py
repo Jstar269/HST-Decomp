@@ -151,11 +151,25 @@ class StarterReservationTests(unittest.TestCase):
 
 class NearpermStarterTests(unittest.TestCase):
     def select(self, start=0x1000, end=0x1040, *, module="EBOOT.BIN", report_start=None, report_end=None,
-               report_module=None, helpers="", explicit=False) -> list[tuple[str, int]]:
+               report_module=None, helpers="", explicit=False, shapes=None) -> list[tuple[str, int]]:
+        """`shapes` maps (module, start) to a word; functions given the same word are clones (hstclone.py's masked
+        code). By default every function of the synthetic ledger has its own word."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            for folder in ("data", "try", "wip"):
+            for folder in ("data", "try", "wip", "ledger"):
                 (root / folder).mkdir()
+            starts = (0x1000, 0x1040, 0x1080)
+            (root / "ledger" / "campaign.json").write_text(json.dumps({"modules": [
+                {"name": name, "functions": [{"start": s, "end": s + 0x40, "boundary_status": "reviewed"} for s in starts]}
+                for name in A.MODULES]}), encoding="utf-8")
+            word = {(name, s): 0x24020000 | (n << 8) | (s >> 6) for n, name in enumerate(A.MODULES) for s in starts}
+            word.update(shapes or {})
+
+            def module_bytes(_cache, name):
+                data = bytearray(0x1100)
+                for s in starts:
+                    data[s:s + 0x40] = word[(name, s)].to_bytes(4, "little") * 16
+                return bytes(data), {"start": 0, "file_offset": 0}
             (root / "data" / "starter-issues.json").write_text(json.dumps({
                 "schema": A.STARTER_SCHEMA,
                 "entries": [{"module": "EBOOT.BIN", "start": "0x00001040", "issue": 9000}],
@@ -177,7 +191,8 @@ class NearpermStarterTests(unittest.TestCase):
             argv = ["hstnearperm.py", "--tag", "synthetic", "--rounds", "0", "--pragmas", "none"]
             with patch.object(sys, "argv", argv + ([source] if explicit else [])), \
                  patch.object(N, "ROOT", root), patch.object(A, "collect", return_value=rows), \
-                 patch.object(N.P, "run_scored", return_value={}) as score, patch("sys.stdout"):
+                 patch.object(N.P, "run_scored", return_value={}) as score, patch("sys.stdout"), \
+                 patch.dict(N.M.__dict__, {"CAMPAIGN": root}), patch.object(N.M, "module_bytes", side_effect=module_bytes):
                 self.assertEqual(N.main(), 0)
             return list(score.call_args.args[4].values())
 
@@ -202,6 +217,85 @@ class NearpermStarterTests(unittest.TestCase):
                     self.assertEqual(self.select(**overlapping, explicit=explicit), [])
             self.assertEqual(self.select(helpers="helper@0x1080-0x10c0", explicit=explicit),
                              [("EBOOT.BIN", 0x1000)])
+
+
+    def test_a_clone_or_twin_of_a_starter_is_not_permuted(self) -> None:
+        starter = A.MODULES[0], 0x1040
+        for clone in ((A.MODULES[0], 0x1000), (A.MODULES[1], 0x1000)):
+            for explicit in (False, True):
+                with self.subTest(clone=clone, explicit=explicit):
+                    same = {clone: 0x24021234, starter: 0x24021234}
+                    self.assertEqual(self.select(module=clone[0], explicit=explicit, shapes=same), [])
+                    # a function of another shape that merely places the clone as a helper waits as well
+                    self.assertEqual(self.select(start=0x1080, end=0x10c0, module=clone[0], explicit=explicit,
+                                                 helpers="helper@0x1000-0x1040", shapes=same), [])
+        self.assertEqual(self.select(shapes={(A.MODULES[1], 0x1000): 0x24021234}), [("EBOOT.BIN", 0x1000)])
+
+
+class StarterCloneTests(unittest.TestCase):
+    """Clone propagation and the lane queue leave a starter function, and its twin's family, to its contributor."""
+
+    def test_hstclone_never_targets_a_starter(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+        import hstclone as C
+
+        exemplar, starter, other = 0x1000, 0x1040, 0x1080
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "eboot").mkdir(parents=True)
+            (root / "data").mkdir()
+            (root / "ledger").mkdir()
+            (root / "src" / "eboot" / "a_00001000.c").write_text(HEADER.format(start=exemplar, end=exemplar + 0x40)
+                                                                  + "int x;\n", encoding="utf-8")
+            (root / "ledger" / "campaign.json").write_text(json.dumps({"modules": [{"name": "EBOOT.BIN", "functions": [
+                {"start": s, "end": s + 0x40, "boundary_status": "reviewed"} for s in (exemplar, starter, other)]}]}),
+                encoding="utf-8")
+            data = b"\x01\x00\x02\x24" * 0x30      # three functions of one synthetic shape
+
+            def targets(entries: list[dict]) -> list[int]:
+                (root / "data" / "starter-issues.json").write_text(
+                    json.dumps({"schema": A.STARTER_SCHEMA, "entries": entries}), encoding="utf-8")
+                seen: list[int] = []
+
+                def retarget(_text, _e_start, t_start, *_rest):
+                    seen.append(t_start)
+                    return None
+
+                argv = ["hstclone.py", "--tag", "synthetic", "--dry-run"]
+                with patch.object(sys, "argv", argv), patch.object(C.M, "ROOT", root), \
+                        patch.dict(C.M.__dict__, {"CAMPAIGN": root}), \
+                        patch.object(C.M, "module_bytes", return_value=(data, {"start": exemplar, "file_offset": 0})), \
+                        patch.object(C.M, "load_symbols", return_value={}), \
+                        patch.object(C, "retarget", side_effect=retarget), redirect_stdout(io.StringIO()):
+                    self.assertEqual(C.main(), 0)
+                return sorted(seen)
+
+            self.assertEqual(targets([{"module": "EBOOT.BIN", "start": f"0x{starter:08x}", "issue": 62}]), [other])
+            self.assertEqual(targets([]), [starter, other])
+
+    def test_a_family_whose_twin_is_reserved_is_not_offered(self) -> None:
+        held = {"status": "near", "evidence": "main-tree", "words_left": 2, "reserved_by": ["starter-issue-#62"]}
+        free = {"status": "untouched", "evidence": "lane-unreached"}
+        self.assertEqual(Q.offer_tier([None], twins=[free]), 2)
+        self.assertIsNone(Q.offer_tier([None], twins=[free, held]))
+        self.assertIsNone(Q.offer_tier([None], twins=[held], twin_near=True))
+
+
+class StarterCheckTests(unittest.TestCase):
+    def test_the_check_flags_a_starter_that_a_source_places_as_a_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "eboot").mkdir(parents=True)
+            (root / "data").mkdir()
+            (root / "src" / "eboot" / "a_00001000.c").write_text(
+                HEADER.format(start=0x1000, end=0x1040).replace(" */", " helpers=FUN_00001080@0x1080-0x10c0 */")
+                + "int x;\n", encoding="utf-8")
+            for start, expected in ((0x2000, 0), (0x1080, 1)):
+                (root / "data" / "starter-issues.json").write_text(json.dumps({"schema": A.STARTER_SCHEMA, "entries": [
+                    {"module": "EBOOT.BIN", "start": f"0x{start:08x}", "issue": 62}]}), encoding="utf-8")
+                with self.subTest(start=hex(start)), patch("sys.stdout"):
+                    self.assertEqual(A.cmd_starters(root), expected)
 
 
 class SpanTests(unittest.TestCase):
