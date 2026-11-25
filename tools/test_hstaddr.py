@@ -247,5 +247,57 @@ class NumericAddressTests(unittest.TestCase):
             self.assertEqual(result[0]["kind"], "integral-to-pointer")
 
 
+    def test_implicit_enumerator_cast_is_reported(self) -> None:
+        # FIRST is 1: an enumerator without an initialiser is an integer constant expression too
+        self.assert_flagged("implicit_enum.c", "enum { NONE, FIRST };\n"
+                            "int *first(void) { return (int *)FIRST; }", [3], kind="integral-to-pointer")
+
+    def test_module_range_implicit_enumerator_with_index_is_reported(self) -> None:
+        self.assert_flagged("implicit_enum_index.c", "enum { BEFORE = 0x100f, TABLE };\n"
+                            "int *entry(int index) { return (int *)(TABLE + index * 4); }", [3])
+
+    def test_cpp_constexpr_address_is_reported(self) -> None:
+        self.assert_flagged("constexpr.cpp", "constexpr int ADDRESS = 0x1010;\n"
+                            "int *plain() { return (int *)ADDRESS; }", [3], kind="integral-to-pointer", lang="c++")
+        self.assert_flagged("constexpr_index.cpp", "constexpr int ADDRESS = 0x1010;\n"
+                            "int *entry(int index) { return (int *)(ADDRESS + index * 4); }", [3], lang="c++")
+
+    def test_cpp_constexpr_offset_from_base_is_not_reported(self) -> None:
+        self.assert_clean("constexpr_offset.cpp", "constexpr int OFFSET = 0x1010;\n"
+                          "int *field(int base) { return (int *)(base + OFFSET); }", lang="c++")
+
+
+class NamedConstantTests(unittest.TestCase):
+    """The values of enumerators and constexpr variables, from AST nodes shaped as Clang's JSON dump writes them."""
+
+    @staticmethod
+    def literal(value: int) -> dict:
+        return {"kind": "ConstantExpr", "value": str(value),
+                "inner": [{"kind": "IntegerLiteral", "value": str(value)}]}
+
+    def test_enumerators_without_initialiser_count_on(self) -> None:
+        enum = {"kind": "EnumDecl", "inner": [
+            {"id": "0x1", "kind": "EnumConstantDecl", "name": "NONE"},
+            {"id": "0x2", "kind": "EnumConstantDecl", "name": "FIRST"},
+            {"id": "0x3", "kind": "EnumConstantDecl", "name": "BASE", "inner": [self.literal(0x1000)]},
+            {"id": "0x4", "kind": "EnumConstantDecl", "name": "NEXT"},
+        ]}
+        enum_values, _ = A._named_constants([enum, *enum["inner"]])
+        self.assertEqual(enum_values, {"0x1": 0, "0x2": 1, "0x3": 0x1000, "0x4": 0x1001})
+
+    def test_reference_to_constexpr_variable_has_its_value(self) -> None:
+        # Clang's referencedDecl names the variable's id and kind but does not repeat its constexpr flag
+        reference = {"kind": "ImplicitCastExpr", "castKind": "LValueToRValue", "inner": [
+            {"kind": "DeclRefExpr", "referencedDecl": {"id": "0x5", "kind": "VarDecl", "name": "ADDRESS"}}]}
+        self.assertEqual(A._integer_value(reference, {}, {"0x5": 0x1010}), 0x1010)
+
+    def test_only_constexpr_variables_have_values(self) -> None:
+        plain = {"id": "0x6", "kind": "VarDecl", "name": "value", "inner": [self.literal(0x1010)]}
+        constant = {"id": "0x7", "kind": "VarDecl", "name": "ADDRESS", "constexpr": True, "init": "c",
+                    "inner": [self.literal(0x1010)]}
+        _, constexpr_values = A._named_constants([plain, *plain["inner"], constant, *constant["inner"]])
+        self.assertEqual(constexpr_values, {"0x7": 0x1010})
+
+
 if __name__ == "__main__":
     unittest.main()
