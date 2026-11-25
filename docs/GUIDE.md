@@ -99,10 +99,13 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
    | `pspdev_bin` | WSL | PSPDEV binutils directory |
    | `mwcc_native` | WSL | wibo and `builds/<build>/mwccpsp.exe` |
    | `gcc_home` | WSL | the `psp-gcc-1.3.1` and `psp-gcc-1.7.1` kits |
+   | `gcc4_home` | WSL | lbp-psp-decomp's GCC 4.x builds (`cc=gcc402x-*` and `cc=gcc404x-*` sources only) |
    | `newlib_home` | WSL | newlib source trees (`hstnewlib.py` only) |
    | `newlib_obj_root` | host | built newlib objects (`hstlib.py index` only) |
    | `ext_root` | host | workspaces for external agent lanes (maintainers only; not needed to build or verify) |
    | `mwcc_builds_dir`, `wibo_exe` | host | host copies, for the digests `hstsample.py` records |
+   | `nakagawa_root` | host | optional: a Nakagawa Recomp checkout (`hstmilestones.py` only) |
+   | `host_clang`, `android_ndk` | host | optional: the Clang compilers of `hstport.py` and `hstaddr.py` |
    | `ghidra_headless`, `java_home` | host | `ghidra/run_commit_decompile.ps1` only |
 
    A tool asks for a key only when it needs it, so `--help` and the local tools work without a configuration; an
@@ -124,7 +127,7 @@ status is 0 only when everything is EXACT. Statuses: `EXACT`, `MISMATCH` (with t
 `COMPILE_FAILED`, `LINK_FAILED`, `MISSING_SYMBOLS`, `UNPLACED_SECTION`, `SECTION_MISMATCH`, `NO_SYMBOL`,
 `MISPLACED`, `EXACT_EXTRA_FLAGS` (an experiment with `--flags` or a header `extra=`, which never counts as a
 match) and `EXACT_FAILS_GATE` (the bytes match but the source fails the fake-match gate of `hstgate.py`: `asm` that emits
-instructions (other than VFPU-only inline asm under the `asm=vfpu` rule), `.word`/`.byte`/`.incbin`, code-emitting pragmas, or `extra=` in `src/`; it never counts either), and `UNPLACED_FUNCTION` (a `helpers=` source defines a function its header does not place). `--json out.json` writes the results (with `words_differ` per source). A source whose target depends on a `static` helper defined earlier in the same file lists it in the header, `helpers=NAME@0xSTART-0xEND[,...]`: mwccpsp emits every function in its own `.text` section, so each function is linked and compared at its own retail address, and the file is EXACT only when all of them match (docs/AGENT-BRIEF.md, "Same-file static helpers"); the source claims only the target's range. Build products go to `build/<module>/<dir>__<stem>__<digest>/` (the digest is a short hash of the source's path, so equally named sources in different trees never share them); a full rebuild
+instructions (other than VFPU-only inline asm under the `asm=vfpu` rule), `.word`/`.byte`/`.incbin`, code-emitting pragmas, or `extra=` in `src/`; it never counts either), and `UNPLACED_FUNCTION` (a `helpers=` source defines a function its header does not place). `--json out.json` writes the results (with `words_differ` per source). A source whose target depends on a `static` helper defined earlier in the same file lists it in the header, `helpers=NAME@0xSTART-0xEND[,...]`: mwccpsp emits every function in its own `.text` section, so each function is linked and compared at its own retail address, and the file is EXACT only when all of them match ([CONTRIBUTING.md](../CONTRIBUTING.md#same-file-static-helpers), "Same-file static helpers"); the source claims only the target's range. Build products go to `build/<module>/<dir>__<stem>__<digest>/` (the digest is a short hash of the source's path, so equally named sources in different trees never share them); a full rebuild
 shares `build/` with any concurrent run, so run one at a time.
 
 ## Whole-module build

@@ -11,6 +11,8 @@
 
 - [ ] `python tools/hstmatch.py <every file added or changed>` reports EXACT for each one
 - [ ] `python tools/hstprcheck.py --base origin/main` reports OK
+- [ ] `python tools/hstreuse.py check` and `python -m unittest discover -s tools -p "test_*.py"` pass (CI runs both)
+- [ ] A function from a good first issue: its entry is removed from `data/starter-issues.json`
 - [ ] Each new source has a true line-2 provenance note, and no other source already covers the function
 - [ ] New compiler lessons, if any, are added to `docs/MWCC-NOTES.md`
 - [ ] No game data, decrypted modules, disassembly, keys or compiler binaries are included, and nothing from the game
