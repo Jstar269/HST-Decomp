@@ -17,6 +17,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstmatch as M  # noqa: E402
 
 LO_OPS = {0x09, 0x0D, 0x20, 0x21, 0x23, 0x24, 0x25, 0x28, 0x29, 0x2B, 0x31, 0x39}   # addiu ori lb lh lw lbu lhu sb sh sw lwc1 swc1
+# SPECIAL functions that write rd on Allegrex (shifts, jalr, movz/movn, mfhi/mflo, clz/clo, ALU, slt/sltu, max/min);
+# syscall/break/sync, jr, mthi/mtlo and the HI/LO multiply-divide family write no GPR (their rd bits are other fields)
+SPECIAL_RD_WRITES = {0x00, 0x02, 0x03, 0x04, 0x06, 0x07, 0x09, 0x0A, 0x0B, 0x10, 0x12, 0x16, 0x17,
+                     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x2A, 0x2B, 0x2C, 0x2D}
+# I-type opcodes that write rt: addi..xori, the integer loads lb..lwr, ll, and sc (which writes its success flag)
+RT_WRITES = set(range(0x08, 0x0F)) | set(range(0x20, 0x27)) | {0x30, 0x38}
+
+
+def gpr_written(w: int) -> int | None:
+    """The general register instruction `w` writes, if any (lui is handled by the caller)."""
+    op, rs, rt, rd = w >> 26, (w >> 21) & 31, (w >> 16) & 31, (w >> 11) & 31
+    if op == 0:
+        return rd if (w & 0x3F) in SPECIAL_RD_WRITES else None
+    if op in RT_WRITES:
+        return rt
+    if op == 0x03 or (op == 0x01 and rt in (0x10, 0x11, 0x12, 0x13)):  # jal, bltzal/bgezal(l): the link register
+        return 31
+    if op == 0x11 and rs in (0, 2):                     # mfc1, cfc1
+        return rt
+    if op == 0x12 and rs == 3:                          # mfv/mfvc (VFPU to GPR)
+        return rt
+    if op == 0x1F:                                      # SPECIAL3: seb/seh/wsbh/bitrev write rd, ext/ins write rt
+        return rd if (w & 0x3F) == 0x20 else rt if (w & 0x3F) in (0x00, 0x04) else None
+    return None
 
 
 def functions(module: str) -> dict[int, int]:
@@ -49,15 +73,17 @@ def strings_in(data: bytes, seg: dict, start: int, end: int) -> list[tuple[int, 
         w = int.from_bytes(data[off:off + 4], "little")
         op, rs, rt, imm = w >> 26, (w >> 21) & 31, (w >> 16) & 31, w & 0xFFFF
         if op == 0x0F:                                  # lui
-            hi[rt] = imm << 16
+            if rt != 0:                                 # $zero is immutable
+                hi[rt] = imm << 16
             continue
         if op in LO_OPS and rs in hi:
             lo = imm if op == 0x0D else (imm - 0x10000 if imm & 0x8000 else imm)
             t = text_at(data, seg, (hi[rs] + lo) & 0xFFFFFFFF)
             if t is not None and (pc, t) not in found:
                 found.append((pc, t))
-        if op in (0x09, 0x0D, 0x20, 0x21, 0x23, 0x24, 0x25) and rt in hi:   # rt overwritten
-            hi.pop(rt)
+        written = gpr_written(w)                        # a register written here no longer holds the high half
+        if written is not None:
+            hi.pop(written, None)
     return found
 
 
