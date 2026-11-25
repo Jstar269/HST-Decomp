@@ -87,6 +87,42 @@ class OutputTests(unittest.TestCase):
         self.assertTrue(b["message"].startswith("0.0%"))
         self.assertIn("tier 1: 15.0%", b["message"])
 
+    def test_no_figure_reads_100_before_every_byte_is_matched(self) -> None:
+        """99.96 % rounds to 100.0 with one decimal and 99.9996 % to 100.000 with three; a published share shows 100
+        only when nothing is left (the README glance, the module table, the badge and the objdiff report)."""
+        import hstreport
+        sizes = [0x4000] * 351 + [0x20]                        # one 32-byte function of 5,750,816 bytes left
+        funcs, at = [], 0
+        for size in sizes:
+            funcs.append({"start": at, "end": at + size})
+            at += size
+        led = {"modules": [{"name": "EBOOT.BIN", "functions": funcs}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            (root / "src" / "a.c").write_text(f"/* HSTMATCH module=EBOOT.BIN start=0x0 end={funcs[-2]['end']:#x} "
+                                              "symbol=FUN_00000000 lang=c99 */\n/* Hand-written. */\n",
+                                              encoding="utf-8")
+            fig = P.measure(["EBOOT.BIN"], root=root, classes={"src/a.c": "game"}, led=led)
+        t = fig["total"]
+        self.assertEqual((t["code_bytes"] - t["matched_code_bytes"], t["functions"] - t["matched_functions"]), (32, 1))
+        ladder = P.tier_ladder(t["code_bytes"], t["matched_code_bytes"],
+                               {"A": {"module": "A", "t2_source_bytes": {"src/a.c": t["code_bytes"] - 1}}}, None)
+        kinds = {"sources": 1, "kinds": {"hand": 1}, "classes": {"game": 1}, "newlib_clones": 0,
+                 "profiles": {"mwcc219": 1}}
+        blocks = P.render_blocks(fig, ladder, kinds, "2000-01-01")
+        self.assertNotIn("100.0%", blocks["readme-glance"])
+        self.assertIn("| **Code matched** (T1) | **99.9%**", blocks["readme-glance"])
+        self.assertNotIn("100.000", blocks["readme-progress"] + blocks["progress-figures"] + blocks["completion-t1"])
+        self.assertIn("99.999 %", blocks["readme-progress"])
+        self.assertNotIn("100.0", P.badge(ladder)["message"])
+        self.assertEqual(hstreport.pct(t["matched_code_bytes"], t["code_bytes"]), 99.999)
+        self.assertEqual(hstreport.pct(10, 10), 100.0)        # complete is 100
+        done = dict(t, matched_code_bytes=t["code_bytes"], matched_functions=t["functions"], percent_code_bytes=100.0,
+                    percent_publishable=100.0)
+        full = P.render_blocks({**fig, "total": done}, ladder, kinds, "2000-01-01")["readme-glance"]
+        self.assertIn("| **Code matched** (T1) | **100.0%**", full)
+
     def test_visuals_are_well_formed_and_account_for_every_byte(self) -> None:
         import hstviz as V
         rows = [{"date": "2026-10-20", "source": "readme:x", "percent_code_bytes": "24.055"},

@@ -62,7 +62,11 @@ SDK_UNIT = "sdk-library-not-published"
 
 
 def pct(part: int, whole: int) -> float:
-    return round(100 * part / whole, 3) if whole else 0.0
+    """The share in percent, 3 decimals; never 100 while part < whole (99.9996 % is 99.999: not complete)."""
+    if not whole:
+        return 0.0
+    value = round(100 * part / whole, 3)
+    return min(value, 99.999) if part < whole else value
 
 
 def measures(code: int, matched_code: int, data: int, functions: int, matched_functions: int, units: int,
@@ -232,8 +236,14 @@ def build_report(fig: dict, sc: dict, led: dict | None = None, sdk: dict[str, li
 
 
 def unit_problems(report: dict) -> list[str]:
-    """Why the units do not add up to their module (category) figures ([] when they do)."""
+    """Why the report is not one build_report writes ([] when it is): the units do not add up to their module
+    (category) figures, a unit's measures are not those of the functions it lists, a module's or the report's own
+    measures (the figures bytematch.dev and recomp.fyi show) are not the sums and shares of what is below them."""
     out = []
+    if report.get("version") != REPORT_VERSION:
+        out.append(f"version {report.get('version')!r}, expected {REPORT_VERSION}")
+    sums = {"code": 0, "matched": 0, "data": 0, "functions": 0, "matched_functions": 0, "units": 0, "complete": 0,
+            "complete_units": 0}
     for c in report["categories"]:
         us = [u for u in report["units"] if u["metadata"]["module_name"] == c["id"]]
         m = c["measures"]
@@ -248,14 +258,58 @@ def unit_problems(report: dict) -> list[str]:
         if len(us) != m["total_units"]:
             out.append(f"{c['id']}: {len(us)} units, module total_units {m['total_units']}")
         for u in us:
-            fs = u.get("functions", [])
-            if fs and (len(fs) != u["measures"].get("total_functions", 0)
-                       or sum(int(f["size"]) for f in fs) != int(u["measures"].get("total_code", "0"))):
-                out.append(f"{u['name']}: its functions do not add up to its measures")
+            out += _unit_measure_problems(u)
+        done = [u for u in us if u["metadata"].get("complete")]
+        complete = sum(int(u["measures"].get("total_code", "0")) for u in done)
+        want = measures(int(m["total_code"]), int(m["matched_code"]), int(m["total_data"]), m["total_functions"],
+                        m["matched_functions"], len(us), complete, len(done))
+        out += [f"{c['id']}: module {k} {m.get(k)!r}, expected {v!r}" for k, v in want.items() if m.get(k) != v]
+        for key, got in (("code", int(m["total_code"])), ("matched", int(m["matched_code"])),
+                         ("data", int(m["total_data"])), ("functions", m["total_functions"]),
+                         ("matched_functions", m["matched_functions"]), ("units", len(us)), ("complete", complete),
+                         ("complete_units", len(done))):
+            sums[key] += got
+    top = report["measures"]
+    want = measures(sums["code"], sums["matched"], sums["data"], sums["functions"], sums["matched_functions"],
+                    len(report["units"]), sums["complete"], sums["complete_units"])
+    out += [f"report {k} {top.get(k)!r}, expected {v!r} (the sum of the modules)" for k, v in want.items()
+            if top.get(k) != v]
+    if sums["units"] != len(report["units"]):
+        out.append(f"{len(report['units']) - sums['units']} units belong to no module")
     names = [u["name"] for u in report["units"]]
     if len(set(names)) != len(names):
         out.append("two units share a name")
     return out
+
+
+def _unit_measure_problems(u: dict) -> list[str]:
+    """Why a unit's measures are not those of the functions it lists (a unit that lists none: why its shares are not
+    those of its own counts)."""
+    um = u["measures"]
+    fs = u.get("functions", [])
+    complete = bool(u["metadata"].get("complete"))
+    if not fs:
+        if complete:
+            return [f"{u['name']}: complete, but it lists no functions"]
+        code, matched = int(um.get("total_code", "0")), int(um.get("matched_code", "0"))
+        n, nm = um.get("total_functions", 0), um.get("matched_functions", 0)
+        if matched > code or nm > n:
+            return [f"{u['name']}: more matched than it holds"]
+        shares = {"fuzzy_match_percent": pct(matched, code), "matched_code_percent": pct(matched, code),
+                  "matched_functions_percent": pct(nm, n)}
+        return [f"{u['name']}: {k} {um.get(k, 0.0)!r}, expected {v!r}" for k, v in shares.items()
+                if um.get(k, 0.0) != v]
+    if any(f.get("fuzzy_match_percent", 100.0) != 100.0 for f in fs):
+        return [f"{u['name']}: a function's fuzzy_match_percent is neither 100 nor absent (near misses are not counted)"]
+    matched = [f for f in fs if "fuzzy_match_percent" in f]
+    if complete and len(matched) != len(fs):
+        return [f"{u['name']}: complete, but {len(fs) - len(matched)} of its functions are not matched"]
+    want = unit_measures(sum(int(f["size"]) for f in fs), sum(int(f["size"]) for f in matched), len(fs),
+                         len(matched), complete)
+    if um != want:
+        keys = sorted(k for k in set(um) | set(want) if um.get(k) != want.get(k))
+        return [f"{u['name']}: its functions do not add up to its measures ({', '.join(keys)})"]
+    return []
 
 
 def render(report: dict) -> str:
