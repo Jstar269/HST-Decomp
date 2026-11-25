@@ -614,12 +614,23 @@ def cmd_starters(root: Path = ROOT) -> int:
     starters = load_starters(root / STARTER_RELPATH)
     src, wip = scan_sources(root)
     spans = {m: exact_spans(src, m) for m in MODULES}
+    placed: dict[tuple[str, int], str] = {}          # functions a source in src/ places as a same-file helper
+    for p in sorted((root / "src").rglob("*")) if (root / "src").is_dir() else []:
+        if p.suffix in (".c", ".cpp"):
+            try:
+                h = M.parse_header(p)
+            except ValueError:
+                continue
+            for _name, hstart, _hend in h.get("helpers") or []:
+                placed.setdefault((h["module"], hstart), p.relative_to(root).as_posix())
     done = 0
     for (module, start), ent in sorted(starters.items(), key=lambda kv: (kv[1]["issue"], kv[0])):
         own = src.get((module, start))
-        if own is not None or covered_by_span(*spans[module], start, start + 4):
+        helper = placed.get((module, start))
+        if own is not None or helper is not None or covered_by_span(*spans[module], start, start + 4):
             done += 1
-            where = own["path"] if own is not None else "a multi-function source"
+            where = (own["path"] if own is not None else f"{helper} (as a helper)" if helper is not None
+                     else "a multi-function source")
             print(f"DONE    #{ent['issue']} {module} {_hex(start)}: covered by {where}; "
                   f"remove the entry (and any wip/ file left for it), and update the issue")
         else:

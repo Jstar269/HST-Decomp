@@ -30,7 +30,8 @@ earlier batches, src/, wip/ and data/blocked_functions.json), in this order of t
 A function covered by a source in src/ or listed in data/blocked_functions.json is never offered, and neither is
 any address of a batch whose lane is not finished (hstattempts.py: "reserved"; a lane is finished once try/harvest-
 <lane>/ exists or it wrote a REPORT.md), so batches made at different times stay disjoint, nor a function that an open
-good first issue holds for contributors (data/starter-issues.json, reserved the same way). --near off keeps near
+good first issue holds for contributors (data/starter-issues.json, reserved the same way), nor a family whose twin
+in the other module is reserved (hstclone.py --from-module would copy the match onto it). --near off keeps near
 misses out, --near only offers nothing else, --near-max-left N drops near misses with more than N words left (and
 unmeasured ones). Within a tier the order is the old one (twins first, then the generated-candidate distance; with
 --execution-rank, observed entry-weighted functions lead); --fresh-order bytes ranks the fresh tier by code bytes
@@ -172,14 +173,17 @@ TIER_NAMES = ("near", "untouched", "fresh", "skipped", "unrecorded")
 
 
 def offer_tier(members: list[dict | None], *, exact: bool = False, near_mode: str = "first",
-               include_skipped: bool = False, include_unrecorded: bool = False, twin_near: bool = False) -> int | None:
+               include_skipped: bool = False, include_unrecorded: bool = False, twin_near: bool = False,
+               twins: list[dict | None] = ()) -> int | None:
     """Index into TIER_NAMES at which a family (its members' attempt rows; None = no record) is offered, or None
     when it must not be offered. A source in src/, a blocked entry and a reservation always win; one near member
     makes the whole family a near-miss item, and so does a near miss of its Sharing/EBOOT twin (`twin_near`: its wip
-    file is a starting point for this module's function, which hstclone.py copies back once either one matches)."""
+    file is a starting point for this module's function, which hstclone.py copies back once either one matches).
+    A reserved twin (`twins`: the attempt rows of its twins in the other module) holds the family too, because a
+    match here is cloned onto that twin."""
     if exact:
         return None
-    if any(m and m.get("reserved_by") for m in members):
+    if any(m and m.get("reserved_by") for m in [*members, *twins]):
         return None
     # a far draft is fresh work: its file is a hint, not a near miss
     states = [("fresh" if m["status"] == "draft" else m["status"]) if m else "fresh" for m in members]
@@ -366,8 +370,8 @@ def main() -> int:
             withheld["probably-psp-gcc"] += 1
             continue
         twin_functions = twins.get(sig, [])
-        twin_rows = [attempts.status(other_name, ts) for ts, _te in twin_functions]
-        twin_rows = [t for t in twin_rows if t and t["status"] == "near" and not t.get("reserved_by")
+        twin_all = [attempts.status(other_name, ts) for ts, _te in twin_functions]
+        twin_rows = [t for t in twin_all if t and t["status"] == "near" and not t.get("reserved_by")
                      and (args.near_max_left is None or (t["words_left"] is not None and t["words_left"] <= args.near_max_left))]
         is_near = any(m and m["status"] == "near" for m in members) or bool(twin_rows)
         limit = args.near_max_size if (is_near and args.near_max_size is not None) else args.max_size
@@ -379,7 +383,7 @@ def main() -> int:
             continue
         covered = any((args.module, s) in attempts.src or A.covered_by_span(*span_index, s, ends[s]) for s in starts)
         tier = offer_tier(members, exact=covered, near_mode=args.near, include_skipped=args.include_skipped,
-                          include_unrecorded=args.include_unrecorded, twin_near=bool(twin_rows))
+                          include_unrecorded=args.include_unrecorded, twin_near=bool(twin_rows), twins=twin_all)
         if tier is None:
             if covered:
                 withheld["exact"] += 1

@@ -57,6 +57,19 @@ DEFAULT_CLASSES = ("register_colouring", "instruction_schedule", "frame_layout",
                    "constant_materialisation")
 
 
+def starter_clones(held: list[tuple[str, int]], modules: tuple[str, ...] = A.MODULES) -> set[tuple[str, int]]:
+    """(module, start) of every reviewed function, in either game module, whose masked code (hstclone.py's signature)
+    equals a held starter's: an exact variant of a clone or a cross-module twin would hand the starter to
+    hstclone.py. Reads the campaign ledger and the retail modules, so only when there is a starter to hold."""
+    if not held:
+        return set()
+    import hstclone as C
+    ledger = json.loads((M.CAMPAIGN / "ledger" / "campaign.json").read_text(encoding="utf-8-sig"))
+    functions = {m: C.load_functions(ledger, m) for m in modules}
+    sigs = {functions[m][s][1][0] for m, s in held if s in functions.get(m, {})}
+    return {(m, s) for m, rows in functions.items() for s, (_end, (sig, _refs)) in rows.items() if sig in sigs}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="*", type=Path)
@@ -88,6 +101,7 @@ def main() -> int:
     src = attempts.src
     held_starters = [(module, start) for (module, start), row in attempts.rows.items()
                      if row.get("starter_issue") and (row["status"] != "exact" or row.get("lane_only"))]
+    held_starters += sorted(starter_clones(held_starters) - set(held_starters))   # their clones and twins wait too
     chosen = {Path(f).as_posix() for f in args.files}
     seeds = []
     reserved = 0
