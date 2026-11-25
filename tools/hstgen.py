@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import hstclone as C
 import hstmatch as M
 
 SRC_DIRS = {"EBOOT.BIN": "eboot", "hstp_trans_main.prx": "sharing_main", "libfont.prx": "libfont",
@@ -922,7 +923,7 @@ def infer_rodata(p: Path, module: str) -> int | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tag", required=True)
+    ap.add_argument("--tag", required=True, type=C.tag_arg)
     ap.add_argument("--module", default="EBOOT.BIN")
     ap.add_argument("--min-size", type=int, default=4)
     ap.add_argument("--max-size", type=int, default=64)
