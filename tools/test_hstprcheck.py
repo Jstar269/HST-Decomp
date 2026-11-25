@@ -2,6 +2,7 @@
 """Tests for the contribution checks (hstprcheck.py), on a throwaway git repository."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -73,10 +74,76 @@ class PrCheckTests(unittest.TestCase):
         self.assertEqual(sorted(r.split()[0] + " " + r.split()[1] for r in got),
                          ["dump wip/x.txt:", "private docs/a.md:", "private docs/b.md:"])
 
+    def test_unusual_file_names_are_checked_like_any_other(self) -> None:
+        secret = "token ghp_" + "a" * 30 + "\n"
+        self.write("docs/caf\u00e9.md", secret)                                   # C-quoted by git without -z
+        self.write('docs/say "hi".md', secret)
+        self.write("docs/big\u00e9.txt", ("y" * 99 + "\n") * 12000)   # over 1 MiB
+        self.write("src/eboot/caf\u00e9.c", "int f(void) { return 0; }\n")       # no header
+        self.write(":(exclude)*", secret)                                         # pathspec magic as a name
+        self.write("docs/[ab].md", secret)                                        # a glob as a name
+        (self.repo / os.fsdecode(b"docs/raw\xff.md")).write_bytes(secret.encode())   # not UTF-8
+        self.commit("names")
+        got = sorted(r.split()[0] for r in self.refusals())
+        self.assertEqual(got, ["header", "name", "private", "private", "private", "private", "size"])
+        for rel in (os.fsdecode(b"docs/raw\xff.md"), "docs/big\u00e9.txt", "src/eboot/caf\u00e9.c"):
+            (self.repo / rel).unlink()
+        self.write("docs/caf\u00e9.md", "a clean note\n")
+        self.write('docs/say "hi".md', "a clean note\n")
+        self.write("docs/[ab].md", "a clean note\n")
+        self.write(":(exclude)*", "a clean note\n")
+        self.commit("clean")
+        self.assertEqual(self.refusals(), [])                                     # a clean file with such a name passes
+
     def test_symbols_are_append_only(self) -> None:
         self.write("symbols/EBOOT.BIN.txt", "a = 0x00010004;\n")
         self.commit("edit")
         self.assertEqual([r.split()[0] for r in self.refusals()], ["symbols"])
+
+    def test_lines_that_look_like_diff_headers_or_hold_other_separators_are_checked(self) -> None:
+        listing = [f"{0x10000 + 4 * i:08x}:  27bdfff0  addiu sp,sp,-16" for i in range(20)]
+        self.write("docs/plus.txt", "".join(f"++ {line}\n" for line in listing))      # "+++ ..." in the diff
+        self.write("docs/cr.txt", "".join(f"{line}\r" for line in listing))           # one line to git
+        self.write("docs/ff.md", "page\x0ctoken ghp_" + "a" * 30 + "\n")              # after a form feed
+        self.commit("hidden")
+        got = sorted(r.split()[0] + " " + r.split()[1] for r in self.refusals())
+        self.assertEqual(got, ["dump docs/cr.txt:", "dump docs/plus.txt:", "private docs/ff.md:"])
+
+    def test_a_log_or_symbols_line_that_starts_with_two_dashes_is_append_only_too(self) -> None:
+        self.git("checkout", "-q", "base")
+        self.write("docs/MWCC-NOTES.md", "- 2026-10-01: a lesson\n-- a continuation\n---\n")
+        self.write("symbols/EBOOT.BIN.txt", "a = 0x00010000;\n-- b = 0x00010004;\n")
+        self.commit("log")
+        self.git("checkout", "-q", "topic")
+        self.git("merge", "-q", "base")
+        self.write("docs/MWCC-NOTES.md", "- 2026-10-01: a lesson\n- 2026-11-01: appended\n")   # "---" lines deleted
+        self.write("symbols/EBOOT.BIN.txt", "a = 0x00010000;\n-- b = 0x00099999;\n")
+        self.commit("rewrite")
+        self.assertEqual(sorted(r.split()[0] for r in self.refusals()), ["log", "symbols"])
+
+    def test_append_only_files_cannot_be_deleted_renamed_or_replaced(self) -> None:
+        self.git("checkout", "-q", "base")
+        self.write("docs/MWCC-NOTES.md", "- 2026-10-01: a lesson\n")
+        self.write("symbols/hstp_trans_main.prx.txt", "c = 0x00000010;\n")
+        self.commit("log")
+        self.git("checkout", "-q", "topic")
+        self.git("merge", "-q", "base")
+        self.git("mv", "symbols/EBOOT.BIN.txt", "symbols/EBOOT.txt")                 # a rename that edits a line
+        self.write("symbols/EBOOT.txt", "a = 0x00099999;\n")
+        (self.repo / "symbols/hstp_trans_main.prx.txt").unlink()                     # a deletion
+        (self.repo / "docs/MWCC-NOTES.md").unlink()                                  # the log, replaced by a link
+        (self.repo / "docs/MWCC-NOTES.md").symlink_to("../README.md")
+        self.commit("rewrite")
+        got = sorted(r.split()[0] + " " + r.split()[1] for r in self.refusals())
+        self.assertEqual(got, ["log docs/MWCC-NOTES.md:", "symbols symbols/EBOOT.BIN.txt:",
+                               "symbols symbols/hstp_trans_main.prx.txt:"])
+        self.git("checkout", "-q", "base", "--", "symbols", "docs")
+        self.git("rm", "-q", "--cached", "symbols/EBOOT.txt")
+        (self.repo / "symbols/EBOOT.txt").unlink()
+        self.write("symbols/new_module.prx.txt", "d = 0x00000020;\n")                # a new map is an append
+        (self.repo / "src/eboot/FUN_00010000.c").unlink()                            # other deletions are fine
+        self.commit("restore")
+        self.assertEqual(self.refusals(), [])
 
     def test_header_note_and_gate(self) -> None:
         self.write("src/eboot/no_header.c", "int f(void) { return 0; }\n")
@@ -85,6 +152,23 @@ class PrCheckTests(unittest.TestCase):
         self.commit("bad")
         got = sorted(r.split()[0] + " " + r.split()[1] for r in self.refusals())
         self.assertEqual(got, ["gate src/eboot/asm.c:", "header src/eboot/no_header.c:", "header src/eboot/no_note.c:"])
+
+    def test_the_sdk_units_are_the_bases_not_the_pull_requests(self) -> None:
+        units = lambda *ranges: ('{"modules": {"EBOOT.BIN": [' + ", ".join(
+            f'{{"start": "0x{lo:08x}", "end": "0x{hi:08x}"}}' for lo, hi in ranges) + "]}}\n")
+        self.git("checkout", "-q", "base")
+        self.write("data/sdk-gcc4-units.json", units((0x4000, 0x5000)))
+        self.commit("units")
+        self.git("checkout", "-q", "topic")
+        self.git("merge", "-q", "base")
+        gcc = lambda addr: GOOD.replace("lang=c99", "cc=gcc404x-O2").replace("00010000", f"{addr:08x}") \
+            .replace("0x00010008", f"0x{addr + 8:08x}")
+        self.write("src/eboot/FUN_00004100.c", gcc(0x4100))                          # inside the base's units
+        self.write("src/eboot/FUN_00010010.c", gcc(0x10010))                         # outside them ...
+        self.write("data/sdk-gcc4-units.json", units((0x4000, 0x5000), (0x10010, 0x10018)))   # ... widened here
+        self.commit("widen")
+        got = [r.split()[0] + " " + r.split()[1] for r in self.refusals()]
+        self.assertEqual(got, ["gate src/eboot/FUN_00010010.c:"])
 
     def test_note_rules_agree_with_published_sources(self) -> None:
         body = "int FUN_00010000(void) { return 0; }\n"
