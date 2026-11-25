@@ -404,10 +404,13 @@ class Parallelism(unittest.TestCase):
     """Audit 2026-11-17: AGENTS.md (Shared resources) caps hstmatch.py at --parallel 4; the default was 6 and the lane
     harvest passed 6."""
 
-    def test_default_and_lane_calls_stay_within_the_cap(self) -> None:
+    def test_default_stays_within_the_cap(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             _rc, _rows, calls = run_matcher(Path(d), tiny_object([("FUN_00100000", CODE)]))
             self.assertIn("xargs -0 -P 4 ", calls[0][1][0])
+
+    @unittest.skipUnless((M.ROOT / "tools" / "hstlane.py").is_file(), "private lane driver is not in the public export")
+    def test_lane_calls_stay_within_the_cap(self) -> None:
         import re
         lane = (M.ROOT / "tools" / "hstlane.py").read_text(encoding="utf-8")
         values = [int(v) for v in re.findall(r'"--parallel", "(\d+)"', lane)]
