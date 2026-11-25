@@ -143,6 +143,7 @@ class PrCheckTests(unittest.TestCase):
         self.write("symbols/new_module.prx.txt", "d = 0x00000020;\n")                # a new map is an append
         (self.repo / "src/eboot/FUN_00010000.c").unlink()                            # other deletions are fine
         self.commit("restore")
+        self.assertEqual(self.refusals(), [])
 
     def test_appended_symbol_lines_must_keep_the_map_loadable(self) -> None:
         # every tool that loads symbols/<module>.txt (hstmatch.load_symbols) refuses the whole map over one bad line,
