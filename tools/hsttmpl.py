@@ -230,7 +230,7 @@ def candidates(module: str, tag: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tag", required=True)
+    ap.add_argument("--tag", required=True, type=C.tag_arg)
     ap.add_argument("--module", default="EBOOT.BIN")
     ap.add_argument("--parallel", type=int, default=12)
     ap.add_argument("--dry-run", action="store_true")

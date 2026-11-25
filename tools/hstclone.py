@@ -35,6 +35,15 @@ MAX_DATA_SHIFT = 0x10000
 GPR_WRITE_RT = set(range(0x08, 0x0F)) | set(range(0x20, 0x27))
 
 
+def tag_arg(value: str) -> str:
+    """--tag of the tools that write into src/ (hstclone, hstgen, hsttmpl): letters, digits, `_`, `.` and `-` only. The
+    tag goes into each written source's provenance note, and tools/hstlint.py (NOTE_KINDS) reads no other tag; it
+    also names the run's directory under try/."""
+    if not re.fullmatch(r"[\w.-]+", value) or value.strip(".") == "":
+        raise argparse.ArgumentTypeError(f"{value!r}: use letters, digits, '_', '.' and '-' only")
+    return value
+
+
 def words(data: bytes) -> list[int]:
     return [int.from_bytes(data[i:i + 4], "little") for i in range(0, len(data) - len(data) % 4, 4)]
 
@@ -218,7 +227,7 @@ def load_functions(ledger: dict, name: str) -> dict[int, tuple[int, tuple]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tag", required=True)
+    ap.add_argument("--tag", required=True, type=tag_arg)
     ap.add_argument("--module", default="EBOOT.BIN", help="module whose functions are the clone targets")
     ap.add_argument("--from-module", help="module whose exact sources are the exemplars (default: --module)")
     ap.add_argument("--parallel", type=int, default=12)
