@@ -98,7 +98,9 @@ def gather(private: bool = False) -> dict:
     attempts = {(r["module"], int(r["start"], 16)): r for r in att}
     src = shown["source_rows"]
     # Public view: a function whose only source is of an excluded origin class is Sony code kept out of this
-    # repository; it leaves the public milestones' denominators but stays in the strict scope.
+    # repository; it leaves the public milestones' denominators (kept_sourced) but stays in the strict scope. The four
+    # Sony modules are drawn as kept out whole, but a function of theirs that no source covers stays in the tier-1
+    # milestones' denominators: "All code matched" is never reached on code that nobody has matched.
     every = src if private else P.measure(all_modules, include_excluded=True, classes=classes, led=led)["source_rows"]
     excluded = {k: v for k, v in every.items() if k not in src}
     modules = {}
@@ -110,14 +112,18 @@ def gather(private: bool = False) -> dict:
         xexact = {s for (mod, s) in excluded if mod == name}
         kept = not private and name not in GAME_MODULES
         funcs = []
+        kept_sourced = 0        # code bytes an excluded source covers: what the public milestones leave out
         for f in m["functions"]:
             a, b = f["start"], f["end"]
+            sourced = a in xexact or A.covered_by_span(xstarts, xmaxend, a, b)
             if kept:
                 st = "kept"
+                kept_sourced += (b - a) if sourced else 0
             elif a in exact or A.covered_by_span(starts, maxend, a, b):
                 st = "matched"
-            elif a in xexact or A.covered_by_span(xstarts, xmaxend, a, b):
+            elif sourced:
                 st = "kept"
+                kept_sourced += b - a
             elif (name, a) in blocked:
                 st = "blocked"
             else:
@@ -136,7 +142,7 @@ def gather(private: bool = False) -> dict:
         for a, b, st in funcs:
             by_state[st] += b - a
         by_state["kept" if kept else "data"] += image - sum(b - a for a, b, _ in funcs)
-        modules[name] = {"image": image, "by_state": by_state, "funcs": sorted(funcs),
+        modules[name] = {"image": image, "by_state": by_state, "funcs": sorted(funcs), "kept_sourced": kept_sourced,
                          "segments": [(s["start"], s["memory_end"]) for s in m["load_segments"]]}
     return {"private": private, "ladder": ladder, "scope": sc, "modules": modules, "readme": readme,
             "sources": shown["sources"], "rows": P.csv_rows(), "date": datetime.date.today().isoformat(),

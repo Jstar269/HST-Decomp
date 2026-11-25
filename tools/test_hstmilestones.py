@@ -146,5 +146,48 @@ class PortableTests(unittest.TestCase):
                 self.assertEqual(H.compute({"modules": {}, "public_paths": None, "ladder": []})[0]["progress"], 70.0)
 
 
+class TierOneTests(unittest.TestCase):
+    def test_all_code_is_not_reached_on_sony_functions_that_no_source_covers(self) -> None:
+        """Public view: the game modules are fully matched and one of the two Sony-module functions has a source of an
+        excluded class (kept out of this repository); the other has no source anywhere. "Game code matched" is
+        reached; "All code matched" ("every function of all six modules matches") is not."""
+        import hstviz as V
+        led = {"modules": [
+            {"name": "EBOOT.BIN", "load_segments": [{"start": 0, "memory_end": 0x100}],
+             "functions": [{"start": 0x0, "end": 0x40}]},
+            {"name": "libfont.prx", "load_segments": [{"start": 0, "memory_end": 0x100}],
+             "functions": [{"start": 0x0, "end": 0x20}, {"start": 0x20, "end": 0x80}]}]}
+        public = {("EBOOT.BIN", 0x0): {"path": "src/eboot/a.c", "start": 0x0, "end": 0x40, "module": "EBOOT.BIN"}}
+        every = {**public, ("libfont.prx", 0x0): {"path": "src/libfont/b.c", "start": 0x0, "end": 0x20,
+                                                  "module": "libfont.prx"}}
+
+        def measure(modules=None, include_excluded=False, **_kw):
+            rows = every if include_excluded else public
+            return {"sources": len(rows), "source_rows": rows, "total": {"matched_code_bytes": 0x40}}
+
+        definitions = {"milestones": [
+            {"id": "game-code", "title": "Game", "criterion": "", "measure": "t1", "modules": ["EBOOT.BIN"]},
+            {"id": "all-code", "title": "All", "criterion": "", "measure": "t1", "modules": "all"}]}
+        scope = {"scope_bytes": 0x200, "modules": {"EBOOT.BIN": {"image_bytes": 0x100},
+                                                   "libfont.prx": {"image_bytes": 0x100}}}
+        with mock.patch.object(V.P, "ledger", return_value=led), \
+                mock.patch.object(V.hstorigin, "classify", return_value=({}, [])), \
+                mock.patch.object(V.P, "scope", return_value=scope), \
+                mock.patch.object(V.P, "measure", side_effect=measure), \
+                mock.patch.object(V.P, "build_reports", return_value={}), \
+                mock.patch.object(V.P, "tier_ladder", return_value={"strict_percent": 0.0}), \
+                mock.patch.object(V.A, "load_blocked", return_value=set()), \
+                mock.patch.object(V.A, "collect", return_value=[]), \
+                mock.patch.object(V.A, "to_json", return_value={"functions": []}), \
+                mock.patch.object(V.P, "csv_rows", return_value=[]), \
+                mock.patch.object(H, "definitions", return_value=definitions):
+            g = V.gather(private=False)
+            self.assertEqual([st for _a, _b, st in g["modules"]["libfont.prx"]["funcs"]], ["kept", "kept"])  # drawn
+            rows = {r["id"]: r for r in H.compute(g)}
+        self.assertEqual(rows["game-code"]["progress"], 100.0)
+        self.assertEqual(rows["all-code"]["progress"], 100 * 0x40 / (0x40 + 0x60))
+        self.assertIn("32 B of Sony code kept out", rows["all-code"]["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

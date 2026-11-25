@@ -96,11 +96,14 @@ def function_item(name: str, start: int, end: int, matched: bool) -> dict:
 
 
 def excluded_spans(classes: dict[str, str], root: Path = ROOT) -> dict[str, list[tuple[int, int]]]:
-    """{module: [(start, end)]} of the sources the public tree leaves out (hstpublish.EXCLUDED_CLASSES)."""
+    """{module: [(start, end)]} of the code the public tree leaves out: the sources of hstpublish.EXCLUDED_CLASSES and
+    the SGX sound library's block (hstorigin.SGX_BLOCKS), whose functions are Sony middleware whether or not a source
+    covers them yet (the README's publishable figure, hstprogress.known_private, leaves the whole block out)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import hstmatch as M
+    import hstorigin
     import hstpublish
-    out: dict[str, list[tuple[int, int]]] = {}
+    out: dict[str, list[tuple[int, int]]] = {m: [block] for m, block in hstorigin.SGX_BLOCKS.items()}
     for rel, cls in classes.items():
         if cls in hstpublish.EXCLUDED_CLASSES and not rel.startswith("wip/"):
             h = M.parse_header(root / rel)
@@ -146,8 +149,8 @@ def module_units(name: str, functions: list[dict], rows: list[dict], sdk: list[t
     for f in sorted(functions, key=lambda f: f["start"]):
         i = bisect.bisect_right(starts, f["start"]) - 1
         owner = by_start.get(f["start"]) or (widest[i] if i >= 0 and widest[i]["end"] >= f["end"] else None)
-        if any(s <= f["start"] < e for s, e in sdk):
-            sdk_funcs.append(f)
+        if owner is None and any(s <= f["start"] < e for s, e in sdk):
+            sdk_funcs.append(f)        # a function a published source covers is publishable (hstprogress.known_private)
         elif f["start"] in tus:
             in_tu.setdefault(tus[f["start"]], []).append((f, owner))
         elif owner is not None:

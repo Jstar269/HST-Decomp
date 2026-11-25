@@ -210,7 +210,10 @@ def compute(g: dict) -> list[dict]:
         elif kind == "t1":
             mods = module_names(m["modules"], names)
             matched = sum(g["modules"][n]["by_state"]["matched"] for n in mods)
-            kept = sum(sum(b - a for a, b, st in g["modules"][n]["funcs"] if st == "kept") for n in mods)
+            # Sony code kept out of this repository: only what an excluded source covers (hstviz.gather kept_sourced)
+            kept = sum(g["modules"][n].get("kept_sourced",
+                                           sum(b - a for a, b, st in g["modules"][n]["funcs"] if st == "kept"))
+                       for n in mods)
             code = sum(sum(b - a for a, b, _ in g["modules"][n]["funcs"]) for n in mods) - kept
             r = {"progress": 100 * matched / code if code else 0.0,
                  "detail": f"{matched:,} of {code:,} code bytes"
