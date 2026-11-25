@@ -7,9 +7,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstattempts as A
+import hstnearperm as N
 import hstqueue as Q
 
 HEADER = "/* HSTMATCH module=EBOOT.BIN start=0x{start:08x} end=0x{end:08x} symbol=FUN_{start:08x} lang=c99 */\n"
@@ -145,6 +147,61 @@ class StarterReservationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00002000", "issue": 62}])
             self.assertEqual(A.cmd_starters(Path(tmp) / "root"), 0)
+
+
+class NearpermStarterTests(unittest.TestCase):
+    def select(self, start=0x1000, end=0x1040, *, module="EBOOT.BIN", report_start=None, report_end=None,
+               report_module=None, helpers="", explicit=False) -> list[tuple[str, int]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for folder in ("data", "try", "wip"):
+                (root / folder).mkdir()
+            (root / "data" / "starter-issues.json").write_text(json.dumps({
+                "schema": A.STARTER_SCHEMA,
+                "entries": [{"module": "EBOOT.BIN", "start": "0x00001040", "issue": 9000}],
+            }), encoding="utf-8")
+            header = HEADER.format(start=start, end=end).replace("EBOOT.BIN", module)
+            if helpers:
+                header = header.replace(" */", f" helpers={helpers} */")
+            source = "wip/fixture.c"
+            (root / source).write_text(header + "int fixture(void) { return 0; }\n", encoding="utf-8")
+            document = {"files": [{
+                "wip": source, "module": report_module or module,
+                "start": hex(start if report_start is None else report_start),
+                "end": hex(end if report_end is None else report_end), "class": "register_colouring",
+                "lever": "permute", "words_left": 2, "words": 16, "yield": 10,
+            }]}
+            (root / "try" / "nearmiss-report.json").write_text(json.dumps(document), encoding="utf-8")
+            rows = A.collect(queue_dir=root / "try" / "agent-queue", blocked_path=root / "missing.json",
+                             ext_root=None, measurements={}, root=root, sizes={})
+            argv = ["hstnearperm.py", "--tag", "synthetic", "--rounds", "0", "--pragmas", "none"]
+            with patch.object(sys, "argv", argv + ([source] if explicit else [])), \
+                 patch.object(N, "ROOT", root), patch.object(A, "collect", return_value=rows), \
+                 patch.object(N.P, "run_scored", return_value={}) as score, patch("sys.stdout"):
+                self.assertEqual(N.main(), 0)
+            return list(score.call_args.args[4].values())
+
+    def test_current_free_span_and_same_address_in_another_module_are_eligible(self) -> None:
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit):
+                self.assertEqual(self.select(explicit=explicit), [("EBOOT.BIN", 0x1000)])
+                self.assertEqual(self.select(start=0x1040, end=0x1080, module="hstp_trans_main.prx",
+                                             explicit=explicit), [("hstp_trans_main.prx", 0x1040)])
+
+    def test_report_must_describe_the_current_source(self) -> None:
+        for explicit in (False, True):
+            for stale_fields in ({"start": 0x1040, "end": 0x1080, "report_start": 0x1000, "report_end": 0x1040},
+                                 {"report_module": "hstp_trans_main.prx"}, {"report_end": 0x1020}):
+                with self.subTest(explicit=explicit, stale_fields=stale_fields):
+                    self.assertEqual(self.select(**stale_fields, explicit=explicit), [])
+
+    def test_target_and_placed_helpers_cannot_cover_a_starter(self) -> None:
+        for explicit in (False, True):
+            for overlapping in ({"end": 0x1080}, {"helpers": "helper@0x1040-0x1080"}):
+                with self.subTest(explicit=explicit, overlapping=overlapping):
+                    self.assertEqual(self.select(**overlapping, explicit=explicit), [])
+            self.assertEqual(self.select(helpers="helper@0x1080-0x10c0", explicit=explicit),
+                             [("EBOOT.BIN", 0x1000)])
 
 
 class SpanTests(unittest.TestCase):
