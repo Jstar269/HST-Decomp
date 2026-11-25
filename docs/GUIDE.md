@@ -205,6 +205,9 @@ lbp-psp-decomp's `tools/lbpcheck.py` is the same tool, with the same states and 
   as a separate program: build `run_elf` there (`make run_elf`) and set `HSTCHECK_RUN_ELF` to it. That interpreter
   models only RAM at 0x08000000-0x0bffffff, so the HST modules (loaded at 0) are `NOT_CHECKED` there; the unit tests
   use it to cross-check the two interpreters on synthetic code when it is available.
+  Nakagawa Recomp is a separate project under GPL-3.0-or-later. None of its code is in this repository and no tool
+  here imports it: `--interp nakagawa` only starts a `run_elf` that you build from your own Nakagawa checkout and
+  reads its output, and the option is off unless you ask for it. That program stays under its own licence.
 
 ## Repository layout
 
