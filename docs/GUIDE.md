@@ -170,6 +170,41 @@ whether the generated table equals retail, the container parts, the sources repr
 their relocation-table entries, are tier 2 for `hstprogress.py`), the sources that are EXACT alone but differ in the full
 link, the sources left out and why.
 
+## Behavioural check of a near miss
+
+A near miss is MISMATCH to `hstmatch.py` whether it computes the same results as retail or not.
+`python tools/hstcheck.py wip/<file>.c` tells the two apart: after `hstmatch.py` has linked the file, it runs the
+retail function and the linked candidate from the same starting states and compares what each computes. It needs the
+campaign directory (`campaign_root`) for the retail module; the candidate side is the file's own build products.
+
+- **States.** 200 random states by default (`--states N`, `--seed S`; state i of a seed is the same everywhere): every
+  register, HI/LO, every FPU register and a 64 KiB scratch region and 64 KiB stack hold edge values (0, 1, -1,
+  0x80000000, 0x7fffffff and other boundaries), pointers into the scratch region and special floats (+-0, +-1, +-inf,
+  NaN, the largest and smallest normal single). The module's load segments are mapped too, so globals read their
+  retail initial values. On the owner's machine, `--captured PATH` adds states captured from a real run: JSON objects
+  `{"format": "psp-check-state.v1", "gpr": {"a0": "0x..."}, "fpr": {"f12": "0x..."}, "hi", "lo", "fcr31",
+  "memory": [{"address": "0x...", "hex": "..."}]}` (registers by name, missing ones are 0; the memory blocks are the
+  only memory besides the module). A capture holds game memory: keep it under `try/` or outside the checkout.
+- **Running.** Each side runs until control leaves its bytes: a return, its first call, import or tail jump, or a
+  syscall. The tool then compares how control left and where to, the registers, and every byte either side wrote, and
+  names the first difference. By default it compares what a caller or callee can see: at a return the return value
+  (`--returns int|int64|float|void`, default `int`), s0-s7, gp, sp, fp, ra and f20-f31; at a call the argument
+  registers a0-a3, t0-t3, f12-f19 and the saved ones. Temporaries, HI/LO and the function's own stack frame are not
+  compared there, because register allocation and frame layout change them without changing behaviour; `--strict`
+  compares all of them.
+- **Verdicts.** `SAME_RESULTS` ("behaves like the original on N states") is a separate tier, never counted as matched:
+  only EXACT counts, and no proof, ledger or progress figure reads it. `DIFFERENT` names the first state and the first
+  differing exit, register or address. `NOT_CHECKED` gives the reason. A state the retail side cannot finish (it
+  leaves the modelled memory, runs out of steps or meets an instruction the interpreter does not model) is not
+  checked and is counted by reason; one the candidate cannot finish where retail did is a difference.
+- **Interpreter.** `tools/hstinterp.py`, project-authored from the MIPS32 ISA and the Allegrex extensions (no other
+  interpreter's code), refuses by name what it does not model: the VFPU, COP0 and system instructions, division by
+  zero, rounding modes other than nearest, FPU traps. Its FPU is IEEE single with round to nearest, denormals kept and
+  every NaN result 0x7fc00000. `--interp nakagawa` runs both sides in Nakagawa Recomp's reference interpreter instead,
+  as a separate program: build `run_elf` there (`make run_elf`) and set `HSTCHECK_RUN_ELF` to it. That interpreter
+  models only RAM at 0x08000000-0x0bffffff, so the HST modules (loaded at 0) are `NOT_CHECKED` there; the unit tests
+  use it to cross-check the two interpreters on synthetic code when it is available.
+
 ## Repository layout
 
 | Path | Contents |
@@ -287,6 +322,7 @@ the byte-match figure but are not clean ([AGENTS.md](../AGENTS.md), "Matching ru
 | `hstnewlib.py` | Turn `hstlib.py` hits into exact library sources (preprocessed with `-nostdinc`: newlib's headers plus `include/`, no compiler header text); `--regenerate` rebuilds installed library sources and their clones from the release, file and function their notes record. |
 | `hstqueue.py` | Build work batches for matching agents: near misses first (ranked by code bytes per word left), then functions an earlier lane never reached, then fresh ones; never a matched or blocked function. Near-miss items carry their lever, and `--lever` offers only near misses with given levers. |
 | `hstnearmiss.py` | Re-measure the near misses in `wip/` and give each a word class (which words are wrong) and a lever: the kind of work it needs, decided from its calls, then its control flow, then whether only relocated fields differ (`body`, `structure`, `referent`, `permute`, `types`, `frame`, `expression`), with the `MWCC-DIGEST.md` sections to read. Writes `try/nearmiss-report.json` and `.md`; `hstnearperm.py` seeds only the levers a permuter can fix. |
+| `hstcheck.py` | Behavioural check of a near miss: runs the retail function and the candidate `hstmatch.py` linked from the same random (and, with `--captured`, captured) states in `hstinterp.py` and reports `SAME_RESULTS` ("behaves like the original on N states", never counted as matched), `DIFFERENT` with the first differing register or address, or `NOT_CHECKED` with the reason. See [Behavioural check of a near miss](#behavioural-check-of-a-near-miss). |
 | `hstattempts.py` | Attempt ledger (`try/attempts.json`): one status per function (`exact`, `near`, `skip`, `untouched`, `blocked`) from the batches, the lanes' progress files, `src/`, `wip/` and `data/blocked_functions.json`; `blocked` validates the blocked list. |
 | `hstfamily.py` | Compiler-family predictor (Metrowerks game code versus Sony psp-gcc SDK code) for functions that have no source yet; `evaluate` reports its cross-validated accuracy, `predict` writes `try/family-predictions.json`, which `hstqueue.py --public-first` uses. |
 | `hstreview.py` | Local web app (127.0.0.1) for the owner's human review of matched sources. |
