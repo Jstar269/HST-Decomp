@@ -202,7 +202,8 @@ def _integer_value(node: dict, enum_values: dict[str, int], constexpr_values: di
             return None
         if ref_kind == "EnumConstantDecl":
             return enum_values.get(ref_id)
-        if ref_kind == "VarDecl" and reference.get("constexpr"):
+        if ref_kind == "VarDecl":
+            # Clang's referencedDecl carries no constexpr flag; constexpr_values holds only constexpr variables
             return constexpr_values.get(ref_id)
         return None
 
@@ -480,6 +481,36 @@ def _absolute_constants(operand: dict, ranges: list[tuple[int, int]], enum_value
     return hits
 
 
+def _named_constants(nodes: list[dict]) -> tuple[dict[str, int], dict[str, int]]:
+    """({enumerator id: value}, {constexpr variable id: value}) of the AST `nodes` in pre-order. An enumerator
+    without an initialiser is one more than the enumerator before it in its enum (the first one is 0)."""
+    enum_values: dict[str, int] = {}
+    constexpr_values: dict[str, int] = {}
+
+    def initial(node: dict) -> int | None:
+        children = [child for child in node.get("inner", ()) if isinstance(child, dict)]
+        return next((value for child in reversed(children)
+                     if (value := _integer_value(child, enum_values, constexpr_values)) is not None), None)
+
+    for node in nodes:
+        kind = node.get("kind")
+        if kind == "EnumDecl":
+            implicit: int | None = 0
+            for child in node.get("inner", ()):
+                if not isinstance(child, dict) or child.get("kind") != "EnumConstantDecl":
+                    continue
+                explicit = [item for item in child.get("inner", ()) if isinstance(item, dict)]
+                value = initial(child) if explicit else implicit
+                if value is not None and child.get("id"):
+                    enum_values[child["id"]] = value
+                implicit = value + 1 if value is not None else None
+        elif kind == "VarDecl" and node.get("constexpr") and node.get("id"):
+            value = initial(node)
+            if value is not None:
+                constexpr_values[node["id"]] = value
+    return enum_values, constexpr_values
+
+
 def _ast_command(source: Path, lang: str, root: Path, overlay: Path, compiler: Path) -> list[str]:
     return [
         str(compiler), f"--target={TARGET}", *_language_args(lang), "-ffreestanding", "-nostdinc",
@@ -531,24 +562,7 @@ def findings(path: str | Path, lang: str, *, root: str | Path | None = None,
                 collect(child)
 
     collect(ast)
-    enum_values: dict[str, int] = {}
-    constexpr_values: dict[str, int] = {}
-    for node in nodes:
-        kind = node.get("kind")
-        node_id = node.get("id")
-        if kind not in ("EnumConstantDecl", "VarDecl") or not node_id:
-            continue
-        if kind == "VarDecl" and not node.get("constexpr"):
-            continue
-        children = [child for child in node.get("inner", ()) if isinstance(child, dict)]
-        value = next((_integer_value(child, enum_values, constexpr_values)
-                      for child in reversed(children)
-                      if _integer_value(child, enum_values, constexpr_values) is not None), None)
-        if value is not None:
-            if kind == "EnumConstantDecl":
-                enum_values[node_id] = value
-            else:
-                constexpr_values[node_id] = value
+    enum_values, constexpr_values = _named_constants(nodes)
 
     found: set[tuple[str, int, int]] = set()
 
