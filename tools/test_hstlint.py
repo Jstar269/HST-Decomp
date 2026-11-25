@@ -82,6 +82,29 @@ class ProvenanceNoteTests(unittest.TestCase):
         self.assertEqual(L.provenance_note(self.HEADER + "int x;\n" + self.HAND + "\n"), (None, ""))   # code first
         self.assertEqual(L.provenance_note(self.HEADER.strip()), (None, ""))
 
+    def test_a_comment_that_only_mentions_a_kind_is_not_a_note(self) -> None:
+        for comment in ("/* Template instance of src/eboot/a.cpp (a Hand-written reconstruction), written by a script */",
+                        "/* Not a Hand-written reconstruction: origin unknown */",
+                        "/* Restructured from a Mechanical translation of Ghidra pseudocode (hstgen.py tag a1) */",
+                        "/* Adapted from the Clone of src/eboot/a.c (hstclone.py tag t1) */",
+                        "/* Based on the Library source: newlib 1.14.0 libc_stdlib/abort.c function abort */"):
+            self.assertEqual(L.provenance_note(self.HEADER + comment + "\nint x;\n")[0], None, comment)
+
+    def test_the_documented_notes_keep_their_kinds(self) -> None:
+        notes = {
+            "hand": self.HAND,
+            "corrected": "/* Ghidra pseudocode (hstgen.py tag a1) corrected by hand: a loop; exact match verified. */",
+            "generated": "/* Mechanical translation of Ghidra pseudocode (hstgen.py tag a1); exact match verified. */",
+            "clone": "/* Clone of src/eboot/a.c (hstclone.py tag t1): addresses substituted. */",
+            "library": "/* Library source: newlib 1.14.0 libc_stdlib/abort.c function abort, preprocessed. */",
+            # hsttmpl.py's destructor templates name the tool after a semicolon, on the note's second line
+            "template": "/* Polymorphic class owning a polymorphic object at +0x8: delete it and\n   clear the pointer; "
+                        "the base destructor (0x100) is out of line (template instance, hsttmpl.py tag t1).\n"
+                        "   Names provisional. */",
+        }
+        for kind, note in notes.items():
+            self.assertEqual(L.provenance_note(self.HEADER + note + "\nint x;\n"), (kind, note))
+
 
 class MainLintTests(unittest.TestCase):
     def setUp(self) -> None:

@@ -31,6 +31,7 @@ from urllib.parse import parse_qs, urlparse
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstdiff as D
+import hstlint
 import hstmatch as M
 
 DECISIONS = M.ROOT / "reviews" / "decisions.jsonl"
@@ -89,8 +90,9 @@ def _describe(p: Path) -> dict:
     if True:
         text = p.read_text(encoding="utf-8", errors="replace")
         h = M.parse_header(p)
-        notes = NOTE.findall(text[:3000])
-        note = notes[1].strip() if len(notes) > 1 else ""
+        # the note as hstlint.py finds it: after the header and any one-line annotations (a DATA-TABLES pointer)
+        found = NOTE.match(hstlint.provenance_note(text)[1])
+        note = found.group(1).strip() if found else ""
         clone = CLONE_OF.search(note)
         return {"path": p.relative_to(M.ROOT).as_posix(), "module": h["module"], "start": h["start"],
                 "end": h["end"], "symbol": h["symbol"], "cc": h.get("cc", "mwcc219"), "note": note,
@@ -138,7 +140,7 @@ button.a{border-color:var(--acc);color:var(--acc)} button.r{border-color:var(--r
 </style></head><body>
 <header><b>HST review</b>
 <label>Module <select id="mod"><option value="">all</option><option>EBOOT.BIN</option><option>hstp_trans_main.prx</option></select></label>
-<label>Kind <select id="kind"><option value="">all</option><option>hand</option><option>corrected</option><option>generated</option><option>library</option><option>clone</option></select></label>
+<label>Kind <select id="kind"><option value="">all</option><option>hand</option><option>corrected</option><option>generated</option><option>library</option><option>template</option><option>clone</option></select></label>
 <label><input type="checkbox" id="undecided" checked> undecided only</label>
 <label><input type="checkbox" id="hidebp" checked> hide typedef/#define boilerplate</label>
 <span id="stats" class="mut"></span></header>
