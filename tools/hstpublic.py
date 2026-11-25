@@ -16,8 +16,10 @@ replacing and deleting files; `.git` is left alone) and commits it there when an
 tree, so they would be published without a commit).
 
 `check` refuses a commit whose tree contains a source (src/, wip/) that the commit's own ORIGINS.json does not
-list, or lists with an excluded class, and a commit any of whose files, or whose message, holds private content
-(tools/hstpublish.py PRIVATE_PATH and PRIVATE_TOKEN). The pre-push hook runs it on every pushed commit and refuses
+list, or lists with an excluded class, a commit that holds a maintainer-only file (tools/hstpublish.py PRIVATE_PATHS:
+the accepted ledger, the lane brief and scripts; `sync` stages the whole worktree, untracked files included), and a
+commit any of whose files, or whose message, holds private content (tools/hstpublish.py PRIVATE_PATH and
+PRIVATE_TOKEN). The pre-push hook runs it on every pushed commit and refuses
 any ref other than `public`.
 """
 from __future__ import annotations
@@ -115,6 +117,8 @@ def check_tree(worktree: Path | None, commit: str | None) -> int:
         origins = json.loads(git(ROOT, "show", f"{commit}:ORIGINS.json"))
         private = hstpublish.private_content(commit_blobs(commit))
     bad = [f"{p}: private content (a local path or a secret)" for p in private]
+    bad += [f"{f}: maintainer-only path (hstpublish.py PRIVATE_PATHS)" for f in files
+            if any(f == q or q.endswith("/") and f.startswith(q) for q in hstpublish.PRIVATE_PATHS)]
     for f in files:
         if f.split("/")[0] in ("src", "wip") and f.endswith((".c", ".cpp")):
             cls = origins.get(f)
