@@ -275,9 +275,9 @@ python tools/hstlint.py --show header                          # none of your fi
 python tools/hstprcheck.py --base origin/main                  # what CI checks on your pull request
 ```
 
-`hstprcheck.py` needs no game or compiler: it refuses binary files, game data, never-versioned paths (`build/`,
-`try/`, `hst-config.json`), personal paths and tokens, disassembly-like listings, changed lines in `symbols/`, sources
-without a valid header or note, and anything the fake-match gate refuses. When a change adds files,
+`hstprcheck.py` needs no game or compiler: it refuses binary files, game data, never-versioned paths (`build/`, `try/`,
+`hst-config.json`, SDK fingerprint catalogues), personal paths and tokens, disassembly-like listings, changed lines in
+`symbols/`, sources without a valid header or note, and anything the fake-match gate refuses. When a change adds files,
 `python tools/hstreuse.py check` confirms that every tracked file is covered by the licence map (`REUSE.toml`); new
 library sources need `python tools/hstreuse.py newlib --write` first. `ORIGINS.json` is a snapshot made by
 `python tools/hstorigin.py`; refresh it before a release (`hstpublish.py` classifies afresh).

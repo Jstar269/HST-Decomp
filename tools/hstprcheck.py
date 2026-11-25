@@ -8,7 +8,9 @@ adds or changes:
 
   binary          a binary file (git sees it as binary, or it holds a NUL byte), or a name the ignore rules keep
                   out for that reason (retail modules, objects, images of discs, archives, compilers, key files)
-  place           a path that is never versioned: build/, try/, keys/, Ghidra projects and caches, hst-config.json
+  place           a path that is never versioned: build/, try/, keys/, Ghidra projects and caches, hst-config.json,
+                  an SDK fingerprint catalogue (sdk-fingerprints-*.json, tools/hstfingerprint.py)
+  catalogue       a JSON file that holds such a catalogue under another name: fingerprints derive from retail code
   size            a changed file over 1 MiB (sources are a few kilobytes; nothing a contribution needs is that big);
                   for the append-only compiler log (docs/MWCC-NOTES.md) the limit applies to what is appended, and the
                   generated objdiff report (docs/objdiff-report.json, one unit per function) has a 32 MiB limit
@@ -64,7 +66,10 @@ REPORT_MAX_BYTES = 32 << 20
 BINARY_SUFFIXES = {".o", ".obj", ".elf", ".bin", ".prx", ".pbp", ".iso", ".cso", ".exe", ".dll", ".so", ".a", ".zip",
                    ".7z", ".gz", ".tar", ".gzf", ".rep", ".img", ".dat", ".sfo", ".at3", ".pmf"}
 NEVER = (re.compile(r"^(build|try|keys)/"), re.compile(r"^ghidra/(projects|out|cache|settings)/"),
-         re.compile(r"(^|/)[^/]*keyfile[^/]*$", re.I), re.compile(rf"^{re.escape(CONFIG)}$"))
+         re.compile(r"(^|/)[^/]*keyfile[^/]*$", re.I), re.compile(rf"^{re.escape(CONFIG)}$"),
+         re.compile(r"(^|/)sdk-fingerprints-[^/]*\.json$"))
+# the format marker of tools/hstfingerprint.py catalogues and proposals (shared with lbp-psp-decomp)
+FINGERPRINTS = re.compile(rb'"format"\s*:\s*"psp-decomp\.sdk-fingerprints\.')
 PRIVATE = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+(?!<)\w|/home/(?!<|user\b)\w|/mnt/[a-z]/Users/(?!<)\w|"
                      r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20}|\bgithub_pat_\w{20}|"
                      r"\bsk-[A-Za-z0-9]{20}|\bAKIA[0-9A-Z]{16}\b")
@@ -164,6 +169,9 @@ def check(repo: Path, base: str) -> list[str]:
             continue
         if b"\0" in data:
             refusals.append(f"binary   {path}: holds NUL bytes")
+            continue
+        if path.lower().endswith(".json") and FINGERPRINTS.search(data):
+            refusals.append(f"catalogue {path}: an SDK fingerprint catalogue (derived from retail code) is never versioned")
             continue
         added = added_lines(repo, base, path)
         for line in added:
