@@ -99,13 +99,13 @@ Optional: newlib source trees (library reconstruction, `hstnewlib.py`), and Ghid
    | `pspdev_bin` | WSL | PSPDEV binutils directory |
    | `mwcc_native` | WSL | wibo and `builds/<build>/mwccpsp.exe` |
    | `gcc_home` | WSL | the `psp-gcc-1.3.1` and `psp-gcc-1.7.1` kits |
-   | `gcc4_home` | WSL | lbp-psp-decomp's GCC 4.x builds (`cc=gcc402x-*` and `cc=gcc404x-*` sources only) |
+   | `gcc4_home` | WSL | lbp-psp-decomp's GCC 4.x builds. Used for per-file matches with `cc=gcc402x-*` or `cc=gcc404x-*`, and for the comparison-toolchain lock. |
    | `newlib_home` | WSL | newlib source trees (`hstnewlib.py` only) |
    | `newlib_obj_root` | host | built newlib objects (`hstlib.py index` only) |
    | `ext_root` | host | workspaces for external agent lanes (maintainers only; not needed to build or verify) |
    | `mwcc_builds_dir`, `wibo_exe` | host | host copies, for the digests `hstsample.py` records |
    | `nakagawa_root` | host | optional: a Nakagawa Recomp checkout (`hstmilestones.py` only) |
-   | `host_clang`, `android_ndk` | host | optional: the Clang compilers of `hstport.py` and `hstaddr.py` |
+   | `host_clang`, `android_ndk` | host | optional paths to the host Clang executable and Android NDK root, respectively, for `hstport.py` and `hstaddr.py` |
    | `ghidra_headless`, `java_home` | host | `ghidra/run_commit_decompile.ps1` only |
 
    A tool asks for a key only when it needs it, so `--help` and the local tools work without a configuration; an

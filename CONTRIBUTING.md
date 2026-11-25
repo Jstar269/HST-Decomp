@@ -103,9 +103,9 @@ These hold for every file, commit, pull request, issue and comment, here and any
 
 1. **Pick a function.** `python tools/hstfamilies.py` ranks unmatched clone families (code identical apart from
    addresses): one match unlocks the whole family, because `hstclone.py` propagates it. For single functions,
-   claim one first with an "A function to match" issue: the maintainer's agent lanes take batches from the same pool
-   with `hstqueue.py` (it lists the Ghidra pseudocode path and, if one exists, the best mechanically generated
-   candidate, `best_generated.source`), and that tool is not run while matching (Ground rules below, and AGENTS.md).
+   claim one first using the "A function to match" issue form. The maintainer’s campaign uses `hstqueue.py` to
+   prepare batches from the same pool. A batch lists the Ghidra pseudocode path and, when available, the best
+   generated candidate (`best_generated.source`). Run `hstqueue.py` only when the maintainer asks.
    The near misses in `wip/` are good leads; their trailing comments say what differs. New here? Take a
    function from an open [good first issue](https://github.com/Jstar269/hst-decomp/labels/good%20first%20issue)
    instead: those are held for new contributors (`data/starter-issues.json`), so the maintainer's tools and agents
@@ -282,8 +282,13 @@ without a valid header or note, and anything the fake-match gate refuses. When a
 library sources need `python tools/hstreuse.py newlib --write` first. `ORIGINS.json` is a snapshot made by
 `python tools/hstorigin.py`; refresh it before a release (`hstpublish.py` classifies afresh).
 
-CI also runs, and needs no game for, `python tools/hstgate.py --all --wip`, `python tools/hstreuse.py check` and the
-unit tests, `python -m unittest discover -s tools -p "test_*.py"`; run them before you push.
+CI also runs these game-free checks. Run them before you push.
+
+```sh
+python tools/hstgate.py --all --wip
+python tools/hstreuse.py check
+python -m unittest discover -s tools -p "test_*.py"
+```
 
 For a change that touches many sources, `python tools/hstmatch.py --all` is the full regression (it shares `build/`
 with any concurrent run, so run one at a time).
@@ -301,8 +306,9 @@ A pull request contains:
   changed from any starting candidate, and, if you used an AI tool, which one (the source must still be work you
   can explain and stand behind);
 - for a near miss in `wip/`: the differing words and what you ruled out, as trailing `//` comments;
-- for a function a good first issue offered: the removal of its entry from `data/starter-issues.json` and of its
-  `wip/` files (CI's unit tests fail while that list names a function a source covers).
+- for a completed good first issue function, remove that function’s entry from `data/starter-issues.json` and its
+  obsolete `wip/` files in the same pull request. Keep the entries for functions still open in the issue. CI
+  checks that the list no longer includes completed matches.
 
 What happens next: CI runs the checks above on the pull request (a first-time contributor's run waits for the
 maintainer's approval). The maintainer reviews the change and **re-verifies every source with the maintainers' tools
