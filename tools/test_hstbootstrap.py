@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 import hashlib
 import json
 import sys
@@ -86,6 +87,18 @@ class MainTests(unittest.TestCase):
                 B.main()
             self.assertNotEqual(cm.exception.code, 0)
 
+    def test_main_missing_file_is_a_usage_error_not_a_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "campaign"
+            for missing in (Path(tmp) / "no-such-EBOOT.BIN", Path(tmp)):   # a typo, or a directory
+                with patch.object(sys, "argv", ["hstbootstrap.py", "--out", str(out_dir), "--eboot", str(missing)]), \
+                        patch("sys.stderr", new_callable=io.StringIO) as err:
+                    with self.assertRaises(SystemExit) as cm:
+                        B.main()
+                self.assertEqual(cm.exception.code, 2)
+                self.assertIn("no such file", err.getvalue())
+            self.assertFalse(out_dir.exists())
+
     def test_main_module_hash_check_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -96,6 +109,7 @@ class MainTests(unittest.TestCase):
             with patch.object(sys, "argv", ["hstbootstrap.py", "--out", str(out_dir), "--eboot", str(fake_eboot)]):
                 ret = B.main()
                 self.assertEqual(ret, 1)
+            self.assertFalse(out_dir.exists(), "a refused module leaves no campaign directory behind")
 
     def test_main_success_single_and_both_modules(self) -> None:
         eboot_data = b"eboot executable contents"

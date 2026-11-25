@@ -159,6 +159,28 @@ class MainLintTests(unittest.TestCase):
             self.assertIn("src/mod/bad_header.c", report["files"]["header"])
             self.assertIn("src/mod/bad_lang.c", report["files"]["lang"])
 
+    def test_a_header_that_does_not_parse_is_a_finding_not_a_crash(self) -> None:
+        # no end=, and a note of a known kind: the report lists the file under `header` instead of stopping
+        self.create_source("mod/no_end.c",
+            "/* HSTMATCH module=A.BIN start=0x0 symbol=FUN_00010003 lang=c99 */\n"
+            "/* Hand-written reconstruction */\n"
+            "extern int FUN_00010004(int);\n"
+            "int FUN_00010003(void) { return 0; }\n"
+        )
+        self.create_source("mod/no_header.c",
+            "/* Hand-written reconstruction */\n"
+            "int FUN_00010005(void) { return 0; }\n"
+        )
+        out_json = self.try_dir / "report.json"
+        with patch.object(L.M, "ROOT", self.root), \
+             patch.object(sys, "argv", ["hstlint.py", "--json", str(out_json)]), \
+             patch("sys.stdout", io.StringIO()):
+            code = L.main()
+        self.assertEqual(code, 0)
+        report = json.loads(out_json.read_text(encoding="utf-8"))
+        self.assertEqual(report["sources"], 2)
+        self.assertEqual(sorted(report["files"]["header"]), ["src/mod/no_end.c", "src/mod/no_header.c"])
+
     def test_main_detects_conflicting_prototypes(self) -> None:
         self.create_source("mod/f1.c",
             "/* HSTMATCH module=A.BIN start=0x0 end=0x10 symbol=FUN_00010000 lang=c99 */\n"
