@@ -264,7 +264,8 @@ class ReuseGateTests(unittest.TestCase):
 def fig() -> dict:
     row = lambda f, m, b, mb: {"functions": f, "matched_functions": m, "code_bytes": b, "matched_code_bytes": mb}  # noqa: E731
     return {"modules": {"EBOOT.BIN": row(100, 10, 4000, 400), "hstp_trans_main.prx": row(50, 5, 1000, 50)},
-            "total": dict(row(150, 15, 5000, 450), percent_code_bytes=9.0), "sources": 14, "near_misses": 3}
+            "total": dict(row(150, 15, 5000, 450), percent_code_bytes=9.0, publishable_functions=120,
+                          publishable_code_bytes=3600, percent_publishable=12.5), "sources": 14, "near_misses": 3}
 
 
 def ladder() -> dict:
@@ -307,6 +308,7 @@ class BlockTests(unittest.TestCase):
         glance = b["readme-glance"]
         self.assertIn("| **Code matched** (T1) | **9.0%** | 450 of the 5,000 code bytes", glance)
         self.assertIn("| **Functions matched** (T1) | **10.0%** | 15 of the 150 game functions. |", glance)
+        self.assertIn("| **Publishable code matched** (T1) | **12.5%** | 450 of the 3,600 code bytes", glance)
         self.assertIn("| **Built from source** (T2) | **12.3%** |", glance)
         self.assertTrue(glance.endswith("That figure is 0.0%. Measured 2000-02-03 from the maintainer's private ledger of accepted proofs by "
                                        "`tools/hstprogress.py`, which needs that ledger."))
@@ -329,6 +331,8 @@ class BlockTests(unittest.TestCase):
         self.assertTrue(figures.startswith("Measured 2000-02-03 from the public sources: 14 exact sources and 3 near"))
         self.assertIn("| Code matched, both game modules | 450 B (15 functions) | 5,000 B (150 functions) | 9.000% |",
                       figures)
+        self.assertIn("| Code matched, publishable scope (known Sony SDK and SGX code left out) | "
+                      "450 B (15 functions) | 3,600 B (120 functions) | 12.500% |", figures)
         self.assertIn("| `EBOOT.BIN` code | 400 B (10 functions) | 4,000 B (100 functions) | 10.000% |", figures)
         self.assertIn("| Tier 2: whole-module build | 1,234 B | the six modules in scope, 10,000 B | 12.340% |", figures)
         self.assertTrue(figures.endswith("| Tier 4: strict (reviewed) | 0 B | the six modules in scope, 10,000 B | 0.000% |"))
