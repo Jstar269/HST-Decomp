@@ -37,6 +37,7 @@ class Key(NamedTuple):
     kind: str   # "host" (must exist), "host-new" (host path that may be created by the tool) or "wsl"
     probe: str  # path below the value that `check` looks for ("" = the value itself)
     doc: str
+    optional: bool = False  # `check` reports it unset without failing; a set value must still exist
 
 
 KEYS: dict[str, Key] = {
@@ -73,10 +74,11 @@ KEYS: dict[str, Key] = {
                          "(tools/import_audit_baseline.json) to measure the platform-layer milestone."),
     "host_clang": Key("host", "",
                       "Optional: LLVM Clang executable for the Windows targets of hstport.py and hstaddr.py; when "
-                      "absent or unavailable, the Android NDK Clang builds all targets."),
+                      "absent or unavailable, the Android NDK Clang builds all targets.", optional=True),
     "android_ndk": Key("host", "",
                        "Optional: Android NDK root for the Android targets of hstport.py and hstaddr.py, and the "
-                       "Windows-target fallback (default: %LOCALAPPDATA%\\Android\\Sdk\\ndk\\30.0.16248370)."),
+                       "Windows-target fallback (default: %LOCALAPPDATA%\\Android\\Sdk\\ndk\\30.0.16248370).",
+                       optional=True),
     "mwcc_builds_dir": Key("host", "",
                            "Host directory with the decomp.me mwccpsp builds, <build>/mwccpsp.exe "
                            "(hstsample.py records its digest)."),
@@ -200,7 +202,7 @@ def main() -> int:
         value = get(key)
         status = ""
         if value is None:
-            status = "UNSET"
+            status = "optional" if spec.optional else "UNSET"
         elif check:
             target = value.rstrip("/\\") + ("/" + spec.probe if spec.probe else "")
             if spec.kind == "wsl":
