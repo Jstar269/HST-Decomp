@@ -7,9 +7,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hstattempts as A
+import hstnearperm as N
 import hstqueue as Q
 
 HEADER = "/* HSTMATCH module=EBOOT.BIN start=0x{start:08x} end=0x{end:08x} symbol=FUN_{start:08x} lang=c99 */\n"
@@ -68,6 +70,138 @@ class BlockedListTests(unittest.TestCase):
         self.assertTrue(all(module in A.MODULES for module, _start in blocked))
         text = A.BLOCKED_PATH.read_text(encoding="utf-8")
         self.assertNotRegex(text, r"[A-Za-z]:[\\/]")    # address-only: no workstation paths
+
+
+class StarterListTests(unittest.TestCase):
+    def write(self, directory: str, doc: dict) -> Path:
+        path = Path(directory) / "starters.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def test_rejects_malformed_entries_duplicates_and_wrong_schema(self) -> None:
+        entry = {"module": "EBOOT.BIN", "start": "0x00001000", "issue": 62}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(A.load_starters(Path(tmp) / "missing.json"), {})
+            self.assertEqual(list(A.load_starters(self.write(tmp, {"schema": A.STARTER_SCHEMA, "entries": [entry]}))),
+                             [("EBOOT.BIN", 0x1000)])
+            for bad in ([entry, entry], [dict(entry, bytes="deadbeef")], [dict(entry, issue="62")],
+                        [dict(entry, issue=True)], [dict(entry, issue=0)], [dict(entry, start="0x1000")],
+                        [dict(entry, module="other.prx")], [dict(entry, notes=5)]):
+                with self.assertRaises(ValueError, msg=repr(bad)):
+                    A.load_starters(self.write(tmp, {"schema": A.STARTER_SCHEMA, "entries": bad}))
+            with self.assertRaises(ValueError):
+                A.load_starters(self.write(tmp, {"schema": "other", "entries": [entry]}))
+
+    def test_the_committed_list_is_well_formed_and_names_only_open_functions(self) -> None:
+        starters = A.load_starters()
+        src, wip = A.scan_sources()
+        for (module, start), ent in starters.items():
+            self.assertNotIn((module, start), src, f"{hex(start)} is matched: close the entry for #{ent['issue']}")
+            self.assertTrue(wip.get(module, {}).get(start), f"{hex(start)} has no wip/ file for the issue to point at")
+
+
+class StarterReservationTests(unittest.TestCase):
+    """A starter function is reserved for contributors until a source covers it."""
+
+    def build(self, tmp: Path, entries: list[dict]) -> A.Attempts:
+        (tmp / "queue").mkdir()
+        (tmp / "root" / "src" / "eboot").mkdir(parents=True)
+        (tmp / "root" / "wip").mkdir()
+        (tmp / "root" / "data").mkdir()
+        (tmp / "root" / "wip" / "g_00002000.c").write_text(HEADER.format(start=0x2000, end=0x2140) + "int x;\n", encoding="utf-8")
+        (tmp / "root" / "src" / "eboot" / "f_00001000.c").write_text(HEADER.format(start=0x1000, end=0x1140) + "int x;\n", encoding="utf-8")
+        (tmp / "root" / "data" / "starter-issues.json").write_text(
+            json.dumps({"schema": A.STARTER_SCHEMA, "entries": entries}), encoding="utf-8")
+        return A.collect(("EBOOT.BIN",), queue_dir=tmp / "queue", blocked_path=tmp / "none.json", ext_root=None,
+                         measurements={"wip/g_00002000.c": {"words_left": 2, "measured": "2026-11-25"}}, root=tmp / "root",
+                         sizes={"EBOOT.BIN": {0x1000: 0x1140, 0x2000: 0x2140, 0x3000: 0x3040}})
+
+    def test_a_starter_near_miss_is_reserved_and_never_offered_or_permuted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00002000", "issue": 62}])
+            row = att.status("EBOOT.BIN", 0x2000)
+            self.assertEqual((row["status"], row["words_left"]), ("near", 2))     # the attempt record is unchanged
+            self.assertEqual(row["reserved_by"], ["starter-issue-#62"])
+            self.assertEqual(row["starter_issue"], 62)
+            self.assertIsNone(Q.offer_tier([row]))
+            self.assertIsNone(Q.offer_tier([None, row]))                          # its whole clone family waits too
+            self.assertEqual(att.summary["main_tree"]["starter_entries"], 1)
+
+    def test_a_starter_that_nothing_mentions_gets_a_reserved_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00003000", "issue": 70}])
+            row = att.status("EBOOT.BIN", 0x3000)
+            self.assertEqual((row["status"], row["evidence"], row["reserved_by"]),
+                             ("untouched", "starter-issue", ["starter-issue-#70"]))
+            self.assertIsNone(Q.offer_tier([row], include_unrecorded=True))
+
+    def test_a_covered_starter_is_not_reserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            att = self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00001000", "issue": 62}])
+            row = att.status("EBOOT.BIN", 0x1000)
+            self.assertEqual(row["status"], "exact")
+            self.assertNotIn("reserved_by", row)
+            self.assertEqual(A.cmd_starters(Path(tmp) / "root"), 1)          # the check flags the entry to remove
+
+    def test_the_check_passes_while_every_starter_is_open(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.build(Path(tmp), [{"module": "EBOOT.BIN", "start": "0x00002000", "issue": 62}])
+            self.assertEqual(A.cmd_starters(Path(tmp) / "root"), 0)
+
+
+class NearpermStarterTests(unittest.TestCase):
+    def select(self, start=0x1000, end=0x1040, *, module="EBOOT.BIN", report_start=None, report_end=None,
+               report_module=None, helpers="", explicit=False) -> list[tuple[str, int]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for folder in ("data", "try", "wip"):
+                (root / folder).mkdir()
+            (root / "data" / "starter-issues.json").write_text(json.dumps({
+                "schema": A.STARTER_SCHEMA,
+                "entries": [{"module": "EBOOT.BIN", "start": "0x00001040", "issue": 9000}],
+            }), encoding="utf-8")
+            header = HEADER.format(start=start, end=end).replace("EBOOT.BIN", module)
+            if helpers:
+                header = header.replace(" */", f" helpers={helpers} */")
+            source = "wip/fixture.c"
+            (root / source).write_text(header + "int fixture(void) { return 0; }\n", encoding="utf-8")
+            document = {"files": [{
+                "wip": source, "module": report_module or module,
+                "start": hex(start if report_start is None else report_start),
+                "end": hex(end if report_end is None else report_end), "class": "register_colouring",
+                "lever": "permute", "words_left": 2, "words": 16, "yield": 10,
+            }]}
+            (root / "try" / "nearmiss-report.json").write_text(json.dumps(document), encoding="utf-8")
+            rows = A.collect(queue_dir=root / "try" / "agent-queue", blocked_path=root / "missing.json",
+                             ext_root=None, measurements={}, root=root, sizes={})
+            argv = ["hstnearperm.py", "--tag", "synthetic", "--rounds", "0", "--pragmas", "none"]
+            with patch.object(sys, "argv", argv + ([source] if explicit else [])), \
+                 patch.object(N, "ROOT", root), patch.object(A, "collect", return_value=rows), \
+                 patch.object(N.P, "run_scored", return_value={}) as score, patch("sys.stdout"):
+                self.assertEqual(N.main(), 0)
+            return list(score.call_args.args[4].values())
+
+    def test_current_free_span_and_same_address_in_another_module_are_eligible(self) -> None:
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit):
+                self.assertEqual(self.select(explicit=explicit), [("EBOOT.BIN", 0x1000)])
+                self.assertEqual(self.select(start=0x1040, end=0x1080, module="hstp_trans_main.prx",
+                                             explicit=explicit), [("hstp_trans_main.prx", 0x1040)])
+
+    def test_report_must_describe_the_current_source(self) -> None:
+        for explicit in (False, True):
+            for stale_fields in ({"start": 0x1040, "end": 0x1080, "report_start": 0x1000, "report_end": 0x1040},
+                                 {"report_module": "hstp_trans_main.prx"}, {"report_end": 0x1020}):
+                with self.subTest(explicit=explicit, stale_fields=stale_fields):
+                    self.assertEqual(self.select(**stale_fields, explicit=explicit), [])
+
+    def test_target_and_placed_helpers_cannot_cover_a_starter(self) -> None:
+        for explicit in (False, True):
+            for overlapping in ({"end": 0x1080}, {"helpers": "helper@0x1040-0x1080"}):
+                with self.subTest(explicit=explicit, overlapping=overlapping):
+                    self.assertEqual(self.select(**overlapping, explicit=explicit), [])
+            self.assertEqual(self.select(helpers="helper@0x1080-0x10c0", explicit=explicit),
+                             [("EBOOT.BIN", 0x1000)])
 
 
 class SpanTests(unittest.TestCase):

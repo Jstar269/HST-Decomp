@@ -1,0 +1,8 @@
+{
+ "schema": "hst-decomp.starter-issues.v1",
+ "description": "Functions that an open good first issue offers to new contributors. tools/hstattempts.py reserves each one that no source covers, so the lane queue (hstqueue.py) and the near-miss permuter (hstnearperm.py) leave it alone. Remove an entry when its issue closes; `python tools/hstattempts.py starters` lists the entries a source now covers.",
+ "entries": [
+  {"module": "EBOOT.BIN", "start": "0x000a3018", "issue": 62, "notes": "wip/FUN_000a3018.c"},
+  {"module": "EBOOT.BIN", "start": "0x000b342c", "issue": 62, "notes": "wip/two_codes_000b342c.c"}
+ ]
+}

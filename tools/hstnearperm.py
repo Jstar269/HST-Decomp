@@ -84,11 +84,14 @@ def main() -> int:
     report = json.loads((ROOT / "try" / "nearmiss-report.json").read_text(encoding="utf-8"))
     classes = set(args.classes.split(","))
     levers = set(args.levers.split(","))
-    attempts = A.collect()          # reserved addresses (batches of lanes that are not finished) are never touched
+    attempts = A.collect()          # reserved addresses (unfinished lane batches, starter issues) are never touched
     src = attempts.src
+    held_starters = [(module, start) for (module, start), row in attempts.rows.items()
+                     if row.get("starter_issue") and (row["status"] != "exact" or row.get("lane_only"))]
     chosen = {Path(f).as_posix() for f in args.files}
     seeds = []
     reserved = 0
+    stale = 0
     for row in sorted(report["files"], key=lambda r: -r["yield"]):
         if chosen and row["wip"] not in chosen:
             continue
@@ -98,23 +101,43 @@ def main() -> int:
             continue
         if row["class"] in ("superseded", "blocked", "tool_state", "exact_now") and not chosen:
             continue
-        if row["words"] > args.max_words or (row["module"], int(row["start"], 16)) in src:
+        report_key = (row["module"], int(row["start"], 16))
+        if row["words"] > args.max_words or report_key in src:
             continue
-        att_row = attempts.status(row["module"], int(row["start"], 16))
+        att_row = attempts.status(*report_key)
         if att_row and att_row.get("reserved_by"):
             reserved += 1
             continue
-        seeds.append(row)
+        # A report can survive an edit to the file it names. Check the identity and all of the
+        # functions the matcher would place, including out-of-line helpers, in both selection modes.
+        path = ROOT / row["wip"]
+        try:
+            before = path.stat()
+            header = M.parse_header(path)
+            text = path.read_text(encoding="utf-8")
+            after = path.stat()
+        except (OSError, ValueError):
+            stale += 1
+            continue
+        if ((before.st_mtime_ns, before.st_size) != (after.st_mtime_ns, after.st_size)
+                or (header["module"], header["start"]) != report_key
+                or header["end"] != int(row["end"], 16)):
+            stale += 1
+            continue
+        if any(module == header["module"] and start <= held < end
+               for _name, start, end in M.placed_functions(header) for module, held in held_starters):
+            reserved += 1
+            continue
+        seeds.append((row, path, header, text))
     if args.limit:
         seeds = seeds[:args.limit]
-    print(f"seeds={len(seeds)} (skipped {reserved} reserved by lane batches) classes={sorted(classes)} levers={sorted(levers)} max_left={args.max_left}", flush=True)
+    print(f"seeds={len(seeds)} (skipped {reserved} reserved by lane batches or starter issues, "
+          f"{stale} stale report entries) classes={sorted(classes)} levers={sorted(levers)} max_left={args.max_left}",
+          flush=True)
     state, owner, ends = {}, {}, {}
     symbols, originals, mwcc = {}, {}, set()
-    for idx, row in enumerate(seeds):
-        path = ROOT / row["wip"]
-        h = M.parse_header(path)
+    for row, path, h, text in seeds:
         key = (h["module"], h["start"])
-        text = path.read_text(encoding="utf-8")
         ends[key] = h["end"]
         symbols[key], originals[key] = h["symbol"], text
         if h.get("cc", "mwcc219") == "mwcc219":
