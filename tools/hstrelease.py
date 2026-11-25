@@ -21,8 +21,9 @@ Run it from the maintainers' checkout of `full`. The steps (each refuses, exit 1
     with the last published one (HEAD of the public worktree); a figure that goes down or becomes null refuses.
  4. `hstpublic.py sync` from the clean worktree into the public worktree (the dry run mirrors into a detached
     temporary worktree of the public HEAD instead and commits nothing), then `hstreuse.py check` on the synced public
-    tree (what is pushed) must be COMPLIANT too, then `hstmatch.py` on every added or modified src/**/*.c|cpp of the
-    public tree: every one must be EXACT.
+    tree (what is pushed) must be COMPLIANT too, then `hstmatch.py` on every src/**/*.c|cpp of the public tree that
+    is added or modified since the remote's main (origin/main; the public HEAD before the sync when there is none):
+    every one must be EXACT, including those of an earlier run that refused or was not pushed.
  5. --apply/--push: the refreshed figure files are committed on full too (refused if full's copies changed meanwhile).
  6. --push: `git push origin public:main`, then `git ls-remote origin main` must equal the public HEAD; prints the
     `gh run list` command for the Progress report workflow.
@@ -330,6 +331,15 @@ def never_lower(public: Path, clean: Path) -> None:
           f"({git(public, 'rev-parse', '--short', 'HEAD').strip()})")
 
 
+def published_base(public: Path, fallback: str) -> str:
+    """The commit that step 4 matches the public tree's sources against: the remote's main as this repository last
+    pushed or fetched it (origin/main), else `fallback`. Not the public HEAD alone: an --apply that refused after its
+    sync, or that was never pushed, leaves a commit on the public branch whose sources the remote does not have yet,
+    and the next run must match them too. A stale origin/main only makes step 4 match more."""
+    sha = git(public, "rev-parse", "-q", "--verify", "refs/remotes/origin/main^{commit}", check=False).strip()
+    return sha or fallback
+
+
 def sync(public: Path, clean: Path, tmp: Path, message: str | None, apply: bool) -> tuple[Path, list[str]]:
     """Step 4 (the sync); the public tree and the src sources it adds or modifies."""
     if apply:
@@ -338,7 +348,8 @@ def sync(public: Path, clean: Path, tmp: Path, message: str | None, apply: bool)
                      "-m", message], clean)
         if rc:
             raise Refused(f"hstpublic.py sync failed (exit {rc})")
-        changed = git(public, "diff", "--name-only", "--diff-filter=AM", before, "HEAD").splitlines()
+        changed = git(public, "diff", "--name-only", "--diff-filter=AM", published_base(public, before),
+                      "HEAD").splitlines()
         return public, [p for p in changed if SOURCE.match(p)]
     tree = tmp / "public"
     git(public, "worktree", "add", "--detach", str(tree), "HEAD")
@@ -362,7 +373,8 @@ def sync(public: Path, clean: Path, tmp: Path, message: str | None, apply: bool)
     for line in status:
         if not SOURCE.match(line.split("\t")[-1]):
             print(f"  {line}")
-    changed = git(tree, "diff", "--cached", "--name-only", "--diff-filter=AM", "HEAD").splitlines()
+    changed = git(tree, "diff", "--cached", "--name-only", "--diff-filter=AM",
+                  published_base(public, "HEAD")).splitlines()
     return tree, [p for p in changed if SOURCE.match(p)]
 
 

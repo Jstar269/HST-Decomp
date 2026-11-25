@@ -401,5 +401,85 @@ class BlockTests(unittest.TestCase):
                 P.write_blocks(render("2000-02-03"), root)
 
 
+FAKE_SYNC = """import shutil, subprocess, sys
+from pathlib import Path
+wt = Path(sys.argv[sys.argv.index("--worktree") + 1])
+msg = sys.argv[sys.argv.index("-m") + 1]
+export = Path(__file__).resolve().parents[1] / "export"
+for f in export.rglob("*"):
+    if f.is_file():
+        (wt / f.relative_to(export)).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(f, wt / f.relative_to(export))
+subprocess.run(["git", "add", "-A"], cwd=wt, check=True)
+if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=wt).returncode:
+    subprocess.run(["git", "commit", "-q", "-m", msg], cwd=wt, check=True)
+"""
+
+
+class SyncSourceTests(unittest.TestCase):
+    """Step 4 matches every public source that the remote's main does not have yet, not only the ones this run's sync
+    added: a run that refused after its sync left that commit on the public branch, unpushed and unmatched."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.origin, self.public, self.clean = base / "origin.git", base / "repo" / "public", base / "repo" / "clean"
+        self.work = base / "work"                       # the run's temporary directory (tmp in hstrelease.main)
+        self.work.mkdir()
+        self.git(base, "init", "-q", "--bare", str(self.origin))
+        self.git(base, "init", "-q", "-b", "public", str(self.public))
+        for key, value in (("user.name", "Test"), ("user.email", "test@example.invalid"), ("commit.gpgsign", "false")):
+            self.git(self.public, "config", key, value)
+        (self.public / "README.md").write_text("x\n", encoding="utf-8")
+        self.git(self.public, "add", "-A")
+        self.git(self.public, "commit", "-q", "-m", "first")
+        self.git(self.public, "remote", "add", "origin", str(self.origin))
+        self.git(self.public, "push", "-q", "origin", "public:main")
+        (self.clean / "tools").mkdir(parents=True)
+        (self.clean / "tools" / "hstpublic.py").write_text(FAKE_SYNC, encoding="utf-8")
+
+    @staticmethod
+    def git(cwd: Path, *args: str) -> str:
+        return R.git(cwd, *args)
+
+    def export(self, rel: str, text: str) -> None:
+        path = self.clean / "export" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def sources(self) -> list[str]:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return R.sync(self.public, self.clean, self.work, "msg", True)[1]
+
+    def test_sources_a_refused_run_left_unpushed_are_matched_again(self) -> None:
+        self.export("src/eboot/a.c", "int a;\n")
+        self.assertEqual(self.sources(), ["src/eboot/a.c"])
+        # step 4 refused (a source was not EXACT): nothing was pushed, and the public branch keeps the sync's commit
+        self.export("docs/x.md", "y\n")
+        self.assertEqual(self.sources(), ["src/eboot/a.c"])
+        self.assertEqual(self.sources(), ["src/eboot/a.c"])            # a run that syncs nothing new
+        self.git(self.public, "push", "-q", "origin", "public:main")
+        self.export("src/eboot/b.c", "int b;\n")
+        self.assertEqual(self.sources(), ["src/eboot/b.c"])            # pushed sources are not matched again
+
+    def test_the_dry_run_matches_unpushed_sources_too(self) -> None:
+        self.export("src/eboot/a.c", "int a;\n")
+        self.assertEqual(self.sources(), ["src/eboot/a.c"])          # an --apply whose step 4 refused
+        (self.clean / "hst-config.json").write_text("{}\n", encoding="utf-8")
+        fake = mock.Mock(mirror=lambda out, tree: None, check_tree=lambda tree, commit: 0)
+        with mock.patch.dict(sys.modules, {"hstpublic": fake}), mock.patch.object(R, "run", return_value=(0, "")), \
+                mock.patch.object(sys, "path", list(sys.path)), contextlib.redirect_stdout(io.StringIO()):
+            tree, sources = R.sync(self.public, self.clean, self.work, None, False)
+        self.git(self.public, "worktree", "remove", "--force", str(tree))
+        self.assertEqual(sources, ["src/eboot/a.c"])
+
+    def test_without_a_remote_main_the_sync_base_is_used(self) -> None:
+        self.git(self.public, "update-ref", "-d", "refs/remotes/origin/main")
+        self.export("src/eboot/a.c", "int a;\n")
+        self.assertEqual(self.sources(), ["src/eboot/a.c"])
+        self.assertEqual(self.sources(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
