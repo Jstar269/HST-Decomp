@@ -282,6 +282,7 @@ the byte-match figure but are not clean ([AGENTS.md](../AGENTS.md), "Matching ru
 | `hstflagsweep.py` | Compile near-miss sources under every mwccpsp build and a set of option combinations (`--flags`, so never a profile match) and tabulate the words that still differ; a 0 is a finding about the translation unit's flags, to be checked against its neighbours. |
 | `hstclone.py` | Propagate an exact source to every function whose code differs only in addresses. |
 | `hstfamilies.py` | Rank unmatched clone families by total bytes (one match unlocks a whole family). |
+| `hstfingerprint.py` | Cross-title SDK fingerprints: `export` writes a catalogue of the accepted matches' masked fingerprints (outside the tree), `lookup CATALOGUE...` proposes clones in this title from another PSP decomp's catalogue, such as lbp-psp-decomp's. Proposals only; see [SDK fingerprint catalogue](#sdk-fingerprint-catalogue). |
 | `hsttmpl.py` | Instantiate known container templates for every element size found in retail. |
 | `hstlib.py` | Find newlib functions in retail by compiled-code signature (`index`, `report`). |
 | `hstnewlib.py` | Turn `hstlib.py` hits into exact library sources (preprocessed with `-nostdinc`: newlib's headers plus `include/`, no compiler header text); `--regenerate` rebuilds installed library sources and their clones from the release, file and function their notes record. |
@@ -305,6 +306,55 @@ the byte-match figure but are not clean ([AGENTS.md](../AGENTS.md), "Matching ru
 Tools that install sources (`hstgen`, `hstclone`, `hsttmpl`, `hstperm`, `hstnewlib`) write into `src/`, and `hstqueue`
 prepares batches for automated agents. A tool installs a source only after the matcher reports EXACT. The maintainers
 also run external AI agent lanes with orchestration scripts that are kept out of the public tree.
+
+### SDK fingerprint catalogue
+
+Hot Shots Tennis and LittleBigPlanet link the same Sony SDK libraries, so a function matched in one decomp is often
+byte-identical, apart from relocations, to one in the other. `tools/hstfingerprint.py` and lbp-psp-decomp's
+`tools/lbpfingerprint.py` exchange identities of matched functions in one shared format, so either project's export
+can be read by the other's lookup:
+
+```text
+python tools/hstfingerprint.py export --out <private path>          # maintainers: from the accepted ledger
+python tools/hstfingerprint.py lookup <the other project's catalogue> [--module EBOOT.BIN] [--json <private path>]
+```
+
+The catalogue is one JSON object:
+
+```json
+{
+ "format": "psp-decomp.sdk-fingerprints.v1",
+ "masking": "clone-analyse.v1",
+ "project": "hst-decomp",
+ "entries": [
+  {"instructions": 12, "masked_sha256": "<64 hex digits>", "source": "src/eboot/<name>_<addr8>.c",
+   "licence": "CC0-1.0", "module": "EBOOT.BIN", "start": "0x<addr8>", "cc": "gcc171-O2"}
+ ]
+}
+```
+
+- One entry per accepted proof (`tools/hstproof.py`), sorted by `masked_sha256`. `instructions` is the number of
+  32-bit words in the proof's claimed range; `source`, `module`, `start` and `cc` (the effective compiler profile)
+  are the proof's; `licence` is the SPDX expression of the source's effective `REUSE.toml` annotation (the last one
+  whose path matches, as `hstreuse.py check` decides).
+- `masked_sha256` is the SHA-256 of the masked signature that `tools/hstclone.py`'s `analyse` computes from the
+  retail words, each word written as four little-endian bytes, in order. The masking (`clone-analyse.v1`, identical
+  in `hstclone.py` and lbp-psp-decomp's `lbpclone.py`): a `j`/`jal` keeps only its opcode bits; a `lui` keeps its
+  upper 16 bits (opcode and register) and marks its register as holding a high half until an instruction writes that
+  register; a word with a primary opcode of 8 or more whose `rs` field names such a register (the `%lo` half: an
+  `addiu`, `ori`, load or store) keeps its upper 16 bits; every other word is kept whole (branch offsets are
+  PC-relative and stay). In-title clone families and cross-title fingerprints are therefore the same relation.
+- A lookup matches on the pair (`instructions`, `masked_sha256`) and skips functions shorter than four instructions
+  (`--min-instructions`), which collide by chance. A reader refuses another `format` or `masking`; a change to
+  either is a new version, made in both projects together.
+
+The catalogue lists identities only and authorises no reuse. A proposed clone is a lead: port the named source with
+this title's addresses, then it must pass `tools/hstmatch.py` (EXACT) and the fake-match gate, and
+`tools/hstpromote.py` decides as for any source; the exemplar's licence travels with any code reused (a source under
+another licence needs its own `REUSE.toml` entry). Fingerprints derive from retail code, so a catalogue (or a
+proposal list) is never versioned: the tool writes only outside the repository or to a gitignored path (default
+`try/sdk-fingerprints-hst-decomp.json`), `.gitignore` ignores `sdk-fingerprints-*.json`, and `tools/hstprcheck.py`
+refuses one in a pull request.
 
 ## Origin classes and the publish filter
 
