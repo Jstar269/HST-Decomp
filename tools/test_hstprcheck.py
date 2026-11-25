@@ -75,14 +75,14 @@ class PrCheckTests(unittest.TestCase):
                          ["dump wip/x.txt:", "private docs/a.md:", "private docs/b.md:"])
 
     def test_unusual_file_names_are_checked_like_any_other(self) -> None:
-        secret = "token ghp_" + "a" * 30 + "\n"
-        self.write("docs/caf\u00e9.md", secret)                                   # C-quoted by git without -z
-        self.write('docs/say "hi".md', secret)
+        leaked = "token ghp_" + "a" * 30 + "\n"
+        self.write("docs/caf\u00e9.md", leaked)                                   # C-quoted by git without -z
+        self.write('docs/say "hi".md', leaked)
         self.write("docs/big\u00e9.txt", ("y" * 99 + "\n") * 12000)   # over 1 MiB
         self.write("src/eboot/caf\u00e9.c", "int f(void) { return 0; }\n")       # no header
-        self.write(":(exclude)*", secret)                                         # pathspec magic as a name
-        self.write("docs/[ab].md", secret)                                        # a glob as a name
-        (self.repo / os.fsdecode(b"docs/raw\xff.md")).write_bytes(secret.encode())   # not UTF-8
+        self.write(":(exclude)*", leaked)                                         # pathspec magic as a name
+        self.write("docs/[ab].md", leaked)                                        # a glob as a name
+        (self.repo / os.fsdecode(b"docs/raw\xff.md")).write_bytes(leaked.encode())   # not UTF-8
         self.commit("names")
         got = sorted(r.split()[0] for r in self.refusals())
         self.assertEqual(got, ["header", "name", "private", "private", "private", "private", "size"])
