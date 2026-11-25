@@ -53,13 +53,14 @@ def main() -> int:
     given = {"EBOOT.BIN": args.eboot, "hstp_trans_main.prx": args.sharing}
     if not any(given.values()):
         ap.error("give at least one of --eboot and --sharing")
+    for option, path in (("--eboot", args.eboot), ("--sharing", args.sharing)):
+        if path and not Path(path).is_file():
+            ap.error(f"{option} {path}: no such file (give the path of your decrypted module)")
 
     spec = json.loads(MODULES.read_text(encoding="utf-8"))
     out = Path(args.out).resolve()
-    (out / "inputs").mkdir(parents=True, exist_ok=True)
-    (out / "ledger").mkdir(parents=True, exist_ok=True)
 
-    modules, failed = [], False
+    modules, inputs, failed = [], {}, False
     for mod in spec["modules"]:
         path = given.get(mod["name"])
         if not path:
@@ -72,7 +73,7 @@ def main() -> int:
             failed = True
             continue
         name = f"{mod['name']}.decrypted"
-        (out / "inputs" / name).write_bytes(data)
+        inputs[name] = data
         functions = []
         for line in (ROOT / mod["functions_file"]).read_text(encoding="utf-8").splitlines():
             if line and not line.startswith("#"):
@@ -84,8 +85,12 @@ def main() -> int:
                         "input_sha256": mod["sha256"], "load_segments": mod["load_segments"], "functions": functions})
         print(f"{mod['name']}: OK ({len(functions)} functions)")
     if failed:
-        return 1
+        return 1   # nothing written: a half-made campaign directory would only fail later, in every tool
 
+    (out / "inputs").mkdir(parents=True, exist_ok=True)
+    (out / "ledger").mkdir(parents=True, exist_ok=True)
+    for name, data in inputs.items():
+        (out / "inputs" / name).write_bytes(data)
     ledger = {"schema": "hst-decomp.bootstrap-campaign.v1", "title_id": spec["title_id"], "modules": modules}
     selection = {"schema": "hst-decomp.bootstrap-selection.v1", "roots": {"inputs": str(out / "inputs")}}
     (out / "ledger" / "campaign.json").write_text(json.dumps(ledger, indent=1) + "\n", encoding="utf-8")
