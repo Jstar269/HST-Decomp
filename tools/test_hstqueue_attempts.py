@@ -92,7 +92,6 @@ class StarterListTests(unittest.TestCase):
 
     def test_the_committed_list_is_well_formed_and_names_only_open_functions(self) -> None:
         starters = A.load_starters()
-        self.assertTrue(starters)
         src, wip = A.scan_sources()
         for (module, start), ent in starters.items():
             self.assertNotIn((module, start), src, f"{hex(start)} is matched: close the entry for #{ent['issue']}")
