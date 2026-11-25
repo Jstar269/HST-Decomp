@@ -71,6 +71,12 @@ KEYS: dict[str, Key] = {
                          "Optional: a checkout of Nakagawa Recomp (github.com/Jstar269/nakagawa-recomp), whose runtime is "
                          "the platform layer of the port milestones. hstmilestones.py reads its reviewed import audit "
                          "(tools/import_audit_baseline.json) to measure the platform-layer milestone."),
+    "host_clang": Key("host", "",
+                      "Optional: LLVM Clang executable for the Windows targets of hstport.py and hstaddr.py; when "
+                      "absent or unavailable, the Android NDK Clang builds all targets."),
+    "android_ndk": Key("host", "",
+                       "Optional: Android NDK root for the Android targets of hstport.py and hstaddr.py, and the "
+                       "Windows-target fallback (default: %LOCALAPPDATA%\\Android\\Sdk\\ndk\\30.0.16248370)."),
     "mwcc_builds_dir": Key("host", "",
                            "Host directory with the decomp.me mwccpsp builds, <build>/mwccpsp.exe "
                            "(hstsample.py records its digest)."),
@@ -168,7 +174,11 @@ def wsl_path(key: str) -> str:
 def _wsl_exists(path: str) -> bool:
     if '"' in path:
         return False
-    r = subprocess.run(["wsl.exe", "-e", "sh", "-c", f'test -e "{path}"'], capture_output=True)
+    try:
+        r = subprocess.run(["wsl.exe", "-e", "sh", "-c", f'test -e "{path}"'], capture_output=True)
+    except FileNotFoundError:
+        raise ConfigError("wsl.exe was not found, so the 'wsl' settings cannot be checked. The tools run on a Windows "
+                          "host and reach the compilers inside WSL (docs/GUIDE.md, Requirements).") from None
     return r.returncode == 0
 
 
@@ -196,7 +206,7 @@ def main() -> int:
             if spec.kind == "wsl":
                 ok = _wsl_exists(target)
             else:
-                ok = Path(os.path.expanduser(target)).exists() or spec.kind == "host-new"
+                ok = Path(os.path.expandvars(os.path.expanduser(target))).exists() or spec.kind == "host-new"
             status = "ok" if ok else "MISSING"
         if status in ("UNSET", "MISSING"):
             bad += 1

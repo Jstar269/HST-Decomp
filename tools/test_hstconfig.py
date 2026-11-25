@@ -165,6 +165,25 @@ class ConfigTests(unittest.TestCase):
         mock_run.return_value.returncode = 1
         self.assertFalse(hstconfig._wsl_exists("/invalid/path"))
 
+    @patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "wsl.exe"))
+    def test_wsl_exists_without_wsl_exe_is_a_config_error(self, _mock_run) -> None:
+        # off Windows (or without WSL) `check` used to end in a FileNotFoundError traceback
+        with self.assertRaises(hstconfig.ConfigError) as ctx:
+            hstconfig._wsl_exists("/opt/pspdev/bin/psp-ld")
+        self.assertIn("wsl.exe was not found", str(ctx.exception))
+
+    def test_the_example_config_loads_as_documented(self) -> None:
+        # docs/GUIDE.md, Setup step 3: copy hst-config.example.json to hst-config.json, then check
+        example = Path(hstconfig.__file__).resolve().parents[1] / "hst-config.example.json"
+        self.config_file.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+        hstconfig._file_cache = None
+        data = json.loads(example.read_text(encoding="utf-8"))
+        keys = [k for k in data if not k.startswith("_")]
+        self.assertEqual(sorted(set(keys) - set(hstconfig.KEYS)), [], "example keys hstconfig.py does not know")
+        for key in keys:
+            self.assertEqual(hstconfig.get(key), data[key].strip())
+            self.assertIn("_" + key, data, f"the example documents no _{key} comment")
+
     def test_main_get(self) -> None:
         os.environ["HST_CAMPAIGN_ROOT"] = "/test/campaign"
         with patch.object(sys, "argv", ["hstconfig.py", "get", "campaign_root"]), \
