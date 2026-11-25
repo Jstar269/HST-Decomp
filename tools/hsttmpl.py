@@ -174,8 +174,11 @@ def candidates(module: str, tag: str):
     ledger = json.loads((M.CAMPAIGN / "ledger" / "campaign.json").read_text(encoding="utf-8-sig"))
     mod = next(m for m in ledger["modules"] if m["name"] == module)
     data, seg = M.module_bytes({}, module)
-    have = {M.parse_header(p)["start"] for p in (M.ROOT / "src").rglob("*")
-            if p.suffix in (".c", ".cpp") and M.parse_header(p)["module"] == module}
+    import hstattempts as A
+    # a source's own start, a function inside a run source or placed as a helper, and a starter function that an open
+    # good first issue holds for its contributor (data/starter-issues.json) are not this tool's to write
+    have = C.covered_starts(module, [f["start"] for f in mod["functions"]])
+    have |= {s for (m, s) in A.load_starters(M.ROOT / A.STARTER_RELPATH) if m == module}
     for f in mod["functions"]:
         if f.get("boundary_status") != "reviewed" or f["start"] in have or not 64 <= f["end"] - f["start"] <= 320:
             continue

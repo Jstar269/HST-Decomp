@@ -115,6 +115,15 @@ def existing_starts() -> set[tuple[str, int]]:
     return out
 
 
+def held_or_covered(module: str, starts: list[int]) -> set[int]:
+    """The starts that are not hstgen's to write: a starter function an open good first issue holds for its contributor
+    (data/starter-issues.json), and a function that a source in src/ already covers inside its range or as a helper."""
+    import hstattempts as A
+    import hstclone as C
+    held = {s for (m, s) in A.load_starters(M.ROOT / A.STARTER_RELPATH) if m == module}
+    return (held & set(starts)) | C.covered_starts(module, starts)
+
+
 def global_type(body: str, addr: str, ret_type: str, int_globals: bool = False) -> str:
     """A simple context guess for the access type of a global used by value."""
     name = rf"_?DAT_{addr}"
@@ -956,6 +965,7 @@ def main() -> int:
         if sig:
             protos[name] = sig
     have = existing_starts()
+    taken = held_or_covered(args.module, [f["start"] for f in mod["functions"]])
     targets = []
     extent_differs = 0
     for f in mod["functions"]:
@@ -964,7 +974,7 @@ def main() -> int:
         size = f["end"] - f["start"]
         if not (args.min_size <= size <= args.max_size and args.min_start <= f["start"] <= args.max_start):
             continue
-        if (args.module, f["start"]) in have or f["start"] not in pseudo:
+        if (args.module, f["start"]) in have or f["start"] in taken or f["start"] not in pseudo:
             continue
         if only and f["start"] not in only:
             continue
@@ -1065,9 +1075,10 @@ def main() -> int:
     dest = M.ROOT / "src" / SRC_DIRS[args.module]
     dest.mkdir(parents=True, exist_ok=True)
     covered = existing_starts()  # another run may have matched some targets meanwhile
+    taken = held_or_covered(args.module, list(accepted))
     written = 0
     for start, (f, p) in sorted(accepted.items()):
-        if (args.module, start) in covered:
+        if (args.module, start) in covered or start in taken:
             print(f"skip 0x{start:08x}: already covered by another source")
             continue
         text = p.read_text(encoding="utf-8")
