@@ -102,8 +102,17 @@ def runs(rows: list[dict]) -> list[dict]:
     return sorted(out, key=lambda g: -g["score"])
 
 
+def source_text(path: Path) -> str:
+    """A source's text with its line endings as they are on disk (read_text would turn CRLF into LF)."""
+    return path.read_bytes().decode("utf-8")
+
+
 def tidy_text(text: str) -> tuple[str | None, str]:
-    """The tidied source, or (None, reason) when the file is left alone."""
+    """The tidied source, or (None, reason) when the file is left alone. A source whose first line ends in CRLF keeps
+    CRLF line endings (the rules below are written for LF)."""
+    if text.split("\n", 1)[0].endswith("\r"):
+        new, why = tidy_text(text.replace("\r\n", "\n"))
+        return (new.replace("\n", "\r\n") if new is not None else None), why
     lines = text.split("\n")
     if not lines[0].startswith("/* HSTMATCH "):
         return None, "no header"
@@ -201,10 +210,11 @@ def port_text(old: str, new: str, twin: str) -> str | None:
     s_old, s_new = (re.search(r"\bsymbol=(\S+)", h[0]).group(1) for h in (old_head, new_head))
     if s_old != s_new:       # the exemplar's function was renamed: the twin takes the same name
         head[0] = re.sub(r"\bsymbol=\S+", f"symbol={s_new}", head[0])
-    if old_head[1] != new_head[1] and not re.search(r"^/\* Clone of |\(port of ", head[1]):
+    if old_head[1].rstrip("\r") != new_head[1].rstrip("\r") and not re.search(r"^/\* Clone of |\(port of ", head[1]):
         head[1] = new_head[1]   # the twin's own note described the exemplar's old text
     body = ADDRESSY.sub(lambda m: amap.get(m.group(0), m.group(0)), new_head[2])
-    return "\n".join(head[:2] + [body])
+    out = "\n".join(head[:2] + [body]).replace("\r\n", "\n")
+    return out.replace("\n", "\r\n") if head[0].endswith("\r") else out    # the twin keeps its own line endings
 
 
 def twin_key(text: str) -> str | None:
@@ -277,7 +287,7 @@ def cmd_twins(a) -> int:
         originals = {}
         for rel in listed:
             if (lane / rel).exists() and (lane / rel).read_bytes() != (a.baseline / rel).read_bytes():
-                originals[rel] = (a.baseline / rel).read_text(encoding="utf-8")
+                originals[rel] = source_text(a.baseline / rel)
         edited = set(originals)
     else:
         base = (lane / "READ-BASE.txt").read_text().strip()
@@ -289,7 +299,7 @@ def cmd_twins(a) -> int:
     groups: dict[str, list[str]] = defaultdict(list)
     for rel in listed:
         if rel.endswith((".c", ".cpp")) and (lane / rel).exists():
-            t = originals.get(rel) if rel in edited else (lane / rel).read_text(encoding="utf-8")
+            t = originals.get(rel) if rel in edited else source_text(lane / rel)
             if t is not None and (k := twin_key(t)):
                 groups[k].append(rel)
     ported, failed = [], []
@@ -297,11 +307,11 @@ def cmd_twins(a) -> int:
         old = originals.get(rel)
         if old is None:
             continue
-        new = (lane / rel).read_text(encoding="utf-8")
+        new = source_text(lane / rel)
         for twin in true_twins(rel, groups.get(twin_key(old) or "", []), lane):
             if twin in edited:
                 continue
-            out = port_text(old, new, (lane / twin).read_text(encoding="utf-8"))
+            out = port_text(old, new, source_text(lane / twin))
             if out is None:
                 failed.append(twin)
                 continue
@@ -364,7 +374,7 @@ def cmd_tidy(a) -> int:
     reasons: dict[str, int] = defaultdict(int)
     changed = 0
     for p in a.paths:
-        text = p.read_text(encoding="utf-8")
+        text = source_text(p)
         new, why = tidy_text(text)
         if new is None or new == text:
             reasons[why if new is None else "unchanged"] += 1

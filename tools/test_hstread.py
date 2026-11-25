@@ -61,6 +61,30 @@ class TidyTests(unittest.TestCase):
         self.assertEqual(R.tidy_text(HEAD + NOTE + "int f(void) { return 0; }\n")[1], "no typedef block")
 
 
+    def test_crlf_source_keeps_crlf_and_is_tidied_like_lf(self) -> None:
+        text = HEAD + NOTE + BLOCK + "\n\n\nvoid FUN_00010000(uint a)\n{\n  if (a) {\n    a = 0;\n  }\n  return;\n}\n"
+        lf, _ = R.tidy_text(text)
+        crlf, why = R.tidy_text(text.replace("\n", "\r\n"))
+        self.assertEqual(why, "tidied")
+        self.assertEqual(crlf, lf.replace("\n", "\r\n"))
+        self.assertNotIn("return;", crlf)
+
+    def test_tidy_command_writes_crlf_back(self) -> None:
+        import argparse
+        import contextlib
+        import io
+        import tempfile
+        text = (HEAD + NOTE + BLOCK + "\nvoid FUN_00010000(uint a)\n{\n  return;\n}\n").replace("\n", "\r\n")
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "FUN_00010000.c"
+            path.write_bytes(text.encode("utf-8"))
+            with contextlib.redirect_stderr(io.StringIO()):
+                R.cmd_tidy(argparse.Namespace(paths=[path], write=True, list=False))
+            data = path.read_bytes()
+        self.assertIn(b"u32 a", data)
+        self.assertEqual(data.count(b"\n"), data.count(b"\r\n"))
+
+
 class PortTests(unittest.TestCase):
     E_OLD = HEAD + NOTE + "/* calls FUN_00020000 */\nvoid FUN_00010000(int param_1)\n{\n  FUN_00020000(param_1 + 0x14, DAT_00030000);\n}\n"
     S_HEAD = "/* HSTMATCH module=hstp_trans_main.prx start=0x00011000 end=0x00011020 symbol=FUN_00011000 lang=c99 */\n"
@@ -88,6 +112,22 @@ class PortTests(unittest.TestCase):
         self.assertIn("symbol=reset ", out)
         self.assertIn(clone_note, out)
         self.assertIn("void reset(int param_1)", out)
+
+
+    def test_port_keeps_twin_note_when_only_the_exemplar_line_endings_differ(self) -> None:
+        # the exemplar at the base commit is CRLF; the edited copy may read back with other line endings
+        twin_note = "/* Sharing twin corrected by hand; exact match verified. */\n"
+        s_old = self.S_OLD.replace(NOTE, twin_note)
+        e_new = self.E_OLD.replace("param_1", "self")
+        out = R.port_text(self.E_OLD.replace("\n", "\r\n"), e_new, s_old)
+        self.assertEqual(out.split("\n")[1], twin_note.rstrip("\n"))
+
+    def test_port_keeps_the_twin_line_endings(self) -> None:
+        e_new = self.E_OLD.replace("param_1", "self")
+        lf = R.port_text(self.E_OLD, e_new, self.S_OLD)
+        self.assertEqual(R.port_text(self.E_OLD, e_new, self.S_OLD.replace("\n", "\r\n")), lf.replace("\n", "\r\n"))
+        crlf_exemplar = R.port_text(self.E_OLD.replace("\n", "\r\n"), e_new.replace("\n", "\r\n"), self.S_OLD)
+        self.assertEqual(crlf_exemplar, lf)
 
 
 class TrueTwinTests(unittest.TestCase):
