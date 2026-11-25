@@ -7,7 +7,9 @@ Copies every file git tracks (`git ls-files`) into --out, byte for byte, except:
 
   * sources whose origin class is in EXCLUDED_CLASSES (see tools/hstorigin.py; the classes are computed fresh
     from the sources, not read from ORIGINS.json);
-  * files that git tracks although .gitignore says they are ignored (private material that was added by force).
+  * files that git tracks although .gitignore says they are ignored (private material that was added by force);
+  * symbolic links: a copy would publish the bytes of the link's target (a PRIVATE_PATHS file, or anything outside
+    the tree) under the link's public name.
 
 It refuses to write anything (exit status 1) when a file it would copy holds private content (PRIVATE_CONTENT: a
 maintainer's local path, a personal home directory, a private key or an access token): the export copies bytes,
@@ -69,16 +71,21 @@ MANIFEST = "ORIGINS.json"
 # PRIVATE_PATH runs on the ASCII-lower-cased text and starts with the path separator, so the regex engine skips ahead
 # to the next slash or backslash (a scan of the whole tree takes seconds, not minutes); the drive letter, /mnt/<drive>,
 # MSYS and /home forms are checked behind it. Its forms: <drive>:\Users\<name>, the workspace root `nk` directly under
-# a drive (Windows, /mnt/<drive>/ and the MSYS /<drive>/ form), /mnt/<drive>/Users/<name> and /home/<name>, with / or
-# \ (repeated, as in escaped JSON) as separator. PRIVATE_TOKEN runs only on text that holds one of its literal
+# a drive (Windows, /mnt/<drive>/ and the MSYS /<drive>/ form), /mnt/<drive>/Users/<name>, /home/<name>, the macOS
+# /Users/<name> and the MSYS /<drive>/Users/<name> (both at the start of an absolute path, not inside a relative path
+# or a URL), with / or \ (repeated, as in escaped JSON) as separator. PRIVATE_TOKEN runs only on text that holds one of its literal
 # prefixes (_TOKEN_PREFIXES), which a substring test finds quickly.
-_NOT_PERSONAL = r"(?!<|(?:default|public|all users|test|user|you)\b)"
+_NOT_PERSONAL = r"(?!<|(?:default|public|all users|shared|test|user|you)\b)"
 PRIVATE_PATH = re.compile(
     r"[\\/](?:(?<=[a-z]:[\\/])[\\/]*(?:users[\\/]+" + _NOT_PERSONAL + r"\w|nk\b)|"
-    r"(?<=/)mnt/[a-z]/(?:nk\b|users/" + _NOT_PERSONAL + r"\w)|(?<![\w.~-]/)[a-z]/nk\b|(?<=/)home/(?!<|user\b)\w)")
-PRIVATE_TOKEN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bghp_[A-Za-z0-9]{20}|\bgithub_pat_\w{20}|"
-                           r"\bsk-[A-Za-z0-9]{20}|\bAKIA[0-9A-Z]{16}\b")
-_TOKEN_PREFIXES = ("PRIVATE KEY-----", "ghp_", "github_pat_", "sk-", "AKIA")
+    r"(?<=/)mnt/[a-z]/(?:nk\b|users/" + _NOT_PERSONAL + r"\w)|(?<![\w.~-]/)[a-z]/nk\b|(?<=/)home/(?!<|user\b)\w|"
+    r"(?<=/)(?<![\w.~-]/)(?:[a-z]/)?users/" + _NOT_PERSONAL + r"\w)")
+# Tokens in their current forms: GitHub ghp_/gho_/ghu_/ghs_/ghr_ and github_pat_, OpenAI sk- and sk-proj-/sk-svcacct-/
+# sk-admin-, AWS AKIA (long-term) and ASIA (temporary) key ids; PEM and PGP private key blocks.
+PRIVATE_TOKEN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----|\bgh[pousr]_[A-Za-z0-9]{20}|\bgithub_pat_\w{20}|"
+                           r"\bsk-(?:[A-Za-z0-9]{20}|(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20})|"
+                           r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
+_TOKEN_PREFIXES = ("PRIVATE KEY", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_", "sk-", "AKIA", "ASIA")
 _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")  # keeps offsets
 
 
@@ -131,6 +138,8 @@ def main() -> int:
     for path in tracked:
         if path in tracked_ignored:
             excluded["gitignored (tracked by force)"].append(path)
+        elif (ROOT / path).is_symlink():
+            excluded["symbolic link (its target is never copied)"].append(path)
         elif any(path == q or q.endswith("/") and path.startswith(q) for q in PRIVATE_PATHS):
             excluded["maintainer-only path (PRIVATE_PATHS)"].append(path)
         elif classes.get(path) in EXCLUDED_CLASSES:
