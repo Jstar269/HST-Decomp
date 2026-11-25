@@ -50,6 +50,9 @@ unmatchable with the available toolchain. The main case is retail's unfolded glo
 lw rX,0(vN)` for a plain global), which mwccpsp always folds: if a function needs exactly that (`docs/MWCC-NOTES.md`,
 "DEAD END, consolidated"), make at most one probe, then write SKIP with that reason and move on.
 
+**Starter functions.** `data/starter-issues.json` lists, by address, functions that an open good first issue holds
+for new contributors. The queue never puts them in a batch; never match one as a helper or on the way either.
+
 **Addresses.** Name every address through a symbol (`DAT_`/`FUN_` names from `symbols/<module>.txt`, or a new line
 you append there), never through a numeric constant cast to a pointer: the sources must stay relocatable. A
 `lui`/`addiu` pair, or a `lui` plus a load/store displacement, adds the SIGN-EXTENDED low half:

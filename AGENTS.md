@@ -23,6 +23,11 @@ repository. Where the brief and this file disagree, the stricter rule applies.
 - **Matching** (most work): one function at a time, by the method in CONTRIBUTING.md. Experiments go in your own
   directory under `try/` (gitignored); an EXACT source goes to `src/<module dir>/`; a close attempt goes to `wip/`.
   Agents running as a lane stay inside their lane directory and follow their prompt.
+- **Starter functions are for new contributors.** `data/starter-issues.json` lists the functions that an open
+  `good first issue` offers; `tools/hstattempts.py` reserves them, so `hstqueue.py` never batches them and
+  `hstnearperm.py` never permutes them. Agents never match, permute or install one, not even as a helper; the issue's
+  contributor does. To open a starter issue, add its functions to the file in the same change; when the issue closes,
+  remove them. `python tools/hstattempts.py starters` lists the entries that a source now covers.
 - **Tools.** The verdict depends on the comparison code (`tools/hstmatch.py`, `hstpromote.py`, `hstproof.py`,
   `hstgate.py`, `hstconfig.py`), the compiler profiles and `include/`. The toolchain lock
   (`data/toolchain-manifest.json`) hashes all of them, so a change there is finished only when
