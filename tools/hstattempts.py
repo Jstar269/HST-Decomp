@@ -4,6 +4,7 @@
     python tools/hstattempts.py [--module EBOOT.BIN] [--out try/attempts.json] [--no-write] [--lane ds10]
                                 [--list STATUS] [--check]
     python tools/hstattempts.py blocked          # validate data/blocked_functions.json and compare it with src/
+    python tools/hstattempts.py starters         # list data/starter-issues.json; flag entries a source now covers
 
 Lane results used to live only in each lane's PROGRESS.md and in the trailing comments of wip/ files, and
 hstqueue.py treated every function that any earlier batch listed as done. This tool reads those records once and
@@ -25,6 +26,12 @@ writes try/attempts.json, one row per function that has ANY record, with a singl
              never reached the function ("evidence": "lane-unreached", safe to offer again), or the batch has no
              per-function record at all, so an attempt cannot be ruled out ("evidence": "queued-no-record"), or the
              lane has not finished ("evidence": "reserved")
+
+Starter functions. data/starter-issues.json lists the functions that an open `good first issue` offers to new
+contributors. Every such function that no source covers is reserved ("reserved_by": ["starter-issue-#N"]), so
+hstqueue.py never puts it in a lane batch and hstnearperm.py never permutes it. When a contributor's source lands in
+src/ the reservation lapses on its own; `hstattempts.py starters` lists the entries that are now covered, so the
+entry and the issue can be closed.
 
 A lane is FINISHED when its work has been harvested (try/harvest-<lane>/ exists in the main tree) or it wrote a
 REPORT.md. Every address in a batch of a lane that is NOT finished is reserved ("reserved_by" lists the batches, on
@@ -64,6 +71,8 @@ STATUSES = ("exact", "near", "draft", "skip", "untouched", "blocked")
 NEAR_WORDS_MAX = 20     # more differing words than this, and the file is a draft, not a near miss
 UNBUILDABLE_CLASSES = ("tool_state",)   # hstnearmiss classes of a file that does not reach the comparison
 BLOCKED_SCHEMA = "hst-decomp.blocked-functions.v1"
+STARTER_SCHEMA = "hst-decomp.starter-issues.v1"
+STARTER_RELPATH = Path("data") / "starter-issues.json"
 MODULES = ("EBOOT.BIN", "hstp_trans_main.prx")
 
 PROGRESS_LINE = re.compile(r"^\s*(0x[0-9a-fA-F]+)\s+(EXACT|NEAR|SKIP)\b\s*(.*?)\s*$", re.I)
@@ -156,6 +165,35 @@ def load_blocked(path: Path = BLOCKED_PATH) -> dict[tuple[str, int], dict]:
 
 def blocked_keys(path: Path = BLOCKED_PATH) -> set[tuple[str, int]]:
     return set(load_blocked(path))
+
+
+# --------------------------------------------------------------------------------------------------------------
+# starter functions held for contributors
+
+def load_starters(path: Path | None = None) -> dict[tuple[str, int], dict]:
+    """{(module, start): entry} from data/starter-issues.json (module, start, issue number, optional notes).
+
+    A missing file means no starters. A malformed file is an error, never an empty list: a silent empty list would
+    hand the starter functions back to the lanes."""
+    path = ROOT / STARTER_RELPATH if path is None else path
+    if not path.exists():
+        return {}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if doc.get("schema") != STARTER_SCHEMA or not isinstance(doc.get("entries"), list):
+        raise ValueError(f"{path}: not a {STARTER_SCHEMA} document")
+    out: dict[tuple[str, int], dict] = {}
+    for entry in doc["entries"]:
+        extra = set(entry) - {"module", "start", "issue", "notes"}
+        if (extra or entry.get("module") not in MODULES or not isinstance(entry.get("start"), str)
+                or not re.fullmatch(r"0x[0-9a-f]{8}", entry["start"])
+                or type(entry.get("issue")) is not int or entry["issue"] <= 0
+                or not isinstance(entry.get("notes", ""), str)):
+            raise ValueError(f"{path}: malformed entry {entry!r}")
+        key = (entry["module"], int(entry["start"], 16))
+        if key in out:
+            raise ValueError(f"{path}: duplicate entry for {entry['module']} {entry['start']}")
+        out[key] = entry
+    return out
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -317,13 +355,16 @@ def ledger_functions(module: str) -> dict[int, int]:
 
 def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, blocked_path: Path = BLOCKED_PATH,
             ext_root: Path | None | str = "config", measurements: dict[str, dict] | None = None,
-            root: Path = ROOT, sizes: dict[str, dict[int, int]] | None = None) -> Attempts:
-    """Build the ledger. `sizes` ({module: {start: end}}) defaults to the campaign ledger; tests pass their own."""
+            root: Path = ROOT, sizes: dict[str, dict[int, int]] | None = None,
+            starter_path: Path | None = None) -> Attempts:
+    """Build the ledger. `sizes` ({module: {start: end}}) defaults to the campaign ledger; tests pass their own.
+    `starter_path` defaults to data/starter-issues.json under `root`."""
     if ext_root == "config":
         ext_root = ext_root_or_none()
     lanes = read_lanes(ext_root if isinstance(ext_root, Path) else None, root)
     batches = read_batches(lanes, queue_dir)
     blocked = load_blocked(blocked_path)
+    starters = load_starters(root / STARTER_RELPATH if starter_path is None else starter_path)
     src, wip = scan_sources(root)
     measured = load_measurements() if measurements is None else measurements
     if sizes is None:
@@ -385,6 +426,11 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
             if r["size"] is None:
                 r["size"] = wrows[0]["end"] - start
                 r["end"] = _hex(wrows[0]["end"])
+
+    # starter functions that nothing else mentions still get a row, so that they can be reserved below
+    for (module, start) in starters:
+        if module in modules:
+            row_for(module, start)
 
     # resolve
     for (module, start), row in sorted(rows.items(), key=lambda kv: (kv[0][0], kv[0][1])):
@@ -466,6 +512,18 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
             if covered_by_span(starts, maxend, start, int(row["end"], 16)):
                 row.update(status="exact", evidence="main-tree-span", reason="")
 
+    # starter functions held for contributors: reserved unless a source already covers them
+    for (module, start), ent in starters.items():
+        row = rows.get((module, start))
+        if row is None:
+            continue
+        row["starter_issue"] = ent["issue"]
+        if row["status"] == "exact":
+            continue
+        if row["evidence"] == "queued-no-record" and not row["batches"]:
+            row["evidence"] = "starter-issue"            # no batch ever listed it: the issue is its only record
+        row["reserved_by"] = list(row.get("reserved_by", [])) + [f"starter-issue-#{ent['issue']}"]
+
     # underlying status of blocked rows, for the report
     for (module, start), row in rows.items():
         if row["status"] == "blocked":
@@ -503,7 +561,7 @@ def collect(modules: tuple[str, ...] = MODULES, *, queue_dir: Path = QUEUE_DIR, 
         }
     summary = _summarize(rows, modules)
     summary["main_tree"] = {"src_sources": len(src), "wip_files": sum(len(v) for m in wip.values() for v in m.values()),
-                            "blocked_entries": len(blocked)}
+                            "blocked_entries": len(blocked), "starter_entries": len(starters)}
     return Attempts(rows, lane_table, blocked, src, summary)
 
 
@@ -551,6 +609,26 @@ def cmd_blocked() -> int:
     return 1 if bad else 0
 
 
+def cmd_starters(root: Path = ROOT) -> int:
+    """List the starter functions; exit 1 when a source now covers one (its entry, and maybe its issue, can close)."""
+    starters = load_starters(root / STARTER_RELPATH)
+    src, wip = scan_sources(root)
+    spans = {m: exact_spans(src, m) for m in MODULES}
+    done = 0
+    for (module, start), ent in sorted(starters.items(), key=lambda kv: (kv[1]["issue"], kv[0])):
+        own = src.get((module, start))
+        if own is not None or covered_by_span(*spans[module], start, start + 4):
+            done += 1
+            where = own["path"] if own is not None else "a multi-function source"
+            print(f"DONE    #{ent['issue']} {module} {_hex(start)}: covered by {where}; "
+                  f"remove the entry (and any wip/ file left for it), and update the issue")
+        else:
+            files = [w["path"] for w in wip.get(module, {}).get(start, [])]
+            print(f"open    #{ent['issue']} {module} {_hex(start)}: {', '.join(files) if files else 'no wip/ file'}")
+    print(f"{len(starters)} starter functions, {done} covered by a source")
+    return 1 if done else 0
+
+
 def print_report(att: Attempts, lane_filter: str | None, list_status: str | None, module_filter: str | None) -> None:
     for name, t in sorted(att.lanes.items()):
         if lane_filter and name != lane_filter:
@@ -569,7 +647,8 @@ def print_report(att: Attempts, lane_filter: str | None, list_status: str | None
         print(f"{module}: {line}")
         print(f"    untouched by evidence: {data['untouched_by_evidence']}")
     mt = att.summary["main_tree"]
-    print(f"main tree: {mt['src_sources']} sources in src/, {mt['wip_files']} files in wip/, {mt['blocked_entries']} blocked")
+    print(f"main tree: {mt['src_sources']} sources in src/, {mt['wip_files']} files in wip/, {mt['blocked_entries']} blocked, "
+          f"{mt['starter_entries']} held for starter issues")
     if list_status:
         for (module, start), r in sorted(att.rows.items()):
             if r["status"] == list_status and (not module_filter or module == module_filter):
@@ -580,6 +659,8 @@ def print_report(att: Attempts, lane_filter: str | None, list_status: str | None
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "blocked":
         return cmd_blocked()
+    if len(sys.argv) > 1 and sys.argv[1] == "starters":
+        return cmd_starters()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--module", choices=MODULES, help="limit the printout to one module (the JSON always has both)")
     ap.add_argument("--out", type=Path, default=ATTEMPTS_PATH)
