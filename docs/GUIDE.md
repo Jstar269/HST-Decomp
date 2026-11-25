@@ -168,7 +168,8 @@ address.
 Each run writes `try/build/<module>-report.json`: per section whether the link equals retail, per relocation table
 whether the generated table equals retail, the container parts, the sources reproduced in place (their bytes, with
 their relocation-table entries, are tier 2 for `hstprogress.py`), the sources that are EXACT alone but differ in the full
-link, the sources left out and why.
+link, the sources left out and why. The exit status is 0 only when the link succeeds and the whole image equals the retail
+module (with `--shift`, also when the shifted build passes); otherwise it is 1, as for `lbpbuild.py` in lbp-psp-decomp.
 
 ## Repository layout
 

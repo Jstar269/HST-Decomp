@@ -25,6 +25,12 @@ class HstCcTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+    def compiles(self, stem: str):
+        """A stand-in for the WSL step that leaves the object a successful compile writes."""
+        def run(*_args, **_kwargs) -> None:
+            (self.tmp_path / "build" / "hstcc" / f"{stem}.o").write_bytes(b"\x7fELF")
+        return run
+
     @patch.object(M, "run_wsl")
     @patch.object(M, "pspdev_bin", return_value="/opt/pspdev/bin")
     @patch.object(M, "native_dir", return_value="/tmp/mwcc_native")
@@ -33,6 +39,7 @@ class HstCcTests(unittest.TestCase):
     ) -> None:
         src = self.tmp_path / "probe.cpp"
         src.write_text("int f() { return 1; }\n", encoding="utf-8")
+        mock_run_wsl.side_effect = self.compiles("probe")
 
         with patch.object(sys, "argv", ["hstcc.py", str(src)]):
             res = hstcc.main()
@@ -60,6 +67,7 @@ class HstCcTests(unittest.TestCase):
     ) -> None:
         src = self.tmp_path / "probe.c"
         src.write_text("int f(void) { return 1; }\n", encoding="utf-8")
+        mock_run_wsl.side_effect = self.compiles("probe")
 
         with patch.object(sys, "argv", ["hstcc.py", str(src)]):
             res = hstcc.main()
@@ -79,6 +87,7 @@ class HstCcTests(unittest.TestCase):
     ) -> None:
         src_cpp = self.tmp_path / "probe.cpp"
         src_cpp.write_text("int f() { return 1; }\n", encoding="utf-8")
+        mock_run_wsl.side_effect = self.compiles("probe")
 
         with patch.object(sys, "argv", ["hstcc.py", str(src_cpp), "--lang", "c99"]):
             res = hstcc.main()
@@ -88,6 +97,7 @@ class HstCcTests(unittest.TestCase):
         self.assertIn("-lang c99", cmd)
 
         mock_run_wsl.reset_mock()
+        mock_run_wsl.side_effect = self.compiles("probe")
 
         src_c = self.tmp_path / "probe.c"
         src_c.write_text("int f(void) { return 1; }\n", encoding="utf-8")
@@ -107,6 +117,7 @@ class HstCcTests(unittest.TestCase):
     ) -> None:
         src = self.tmp_path / "probe.cpp"
         src.write_text("int f() { return 1; }\n", encoding="utf-8")
+        mock_run_wsl.side_effect = self.compiles("probe")
 
         with patch.object(
             sys, "argv", ["hstcc.py", str(src), "--build", "220", "--extra", "-opt nopeephole"]
@@ -134,6 +145,22 @@ class HstCcTests(unittest.TestCase):
 
         self.assertTrue(out_dir.exists())
         self.assertTrue(out_dir.is_dir())
+
+    @patch.object(M, "run_wsl")
+    @patch.object(M, "pspdev_bin", return_value="/opt/pspdev/bin")
+    @patch.object(M, "native_dir", return_value="/tmp/mwcc_native")
+    def test_a_failed_compile_exits_1_even_after_an_earlier_probe(
+        self, mock_native_dir: MagicMock, mock_pspdev_bin: MagicMock, mock_run_wsl: MagicMock
+    ) -> None:
+        src = self.tmp_path / "probe.c"
+        src.write_text("int f(void) { return }\n", encoding="utf-8")
+        out = self.tmp_path / "build" / "hstcc"
+        out.mkdir(parents=True)
+        (out / "probe.o").write_bytes(b"\x7fELF")          # left by an earlier, successful probe
+        with patch.object(sys, "argv", ["hstcc.py", str(src)]), patch("sys.stderr"):
+            res = hstcc.main()                             # the stand-in WSL step writes no object
+        self.assertEqual(res, 1)
+        self.assertFalse((out / "probe.o").exists())
 
     def test_missing_source_argument(self) -> None:
         with patch.object(sys, "argv", ["hstcc.py"]), patch("sys.stderr"):
