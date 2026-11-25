@@ -176,6 +176,7 @@ A near miss is MISMATCH to `hstmatch.py` whether it computes the same results as
 `python tools/hstcheck.py wip/<file>.c` tells the two apart: after `hstmatch.py` has linked the file, it runs the
 retail function and the linked candidate from the same starting states and compares what each computes. It needs the
 campaign directory (`campaign_root`) for the retail module; the candidate side is the file's own build products.
+lbp-psp-decomp's `tools/lbpcheck.py` is the same tool, with the same states and output.
 
 - **States.** 200 random states by default (`--states N`, `--seed S`; state i of a seed is the same everywhere): every
   register, HI/LO, every FPU register and a 64 KiB scratch region and 64 KiB stack hold edge values (0, 1, -1,

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -328,6 +329,77 @@ class CommandLineTest(unittest.TestCase):
         text = Path(C.__file__).read_text(encoding="utf-8")
         for name in ("accepted-ledger", "accepted-journal", "progress.json", "hstpromote"):
             self.assertNotIn(name, text)
+
+
+def relocatable(text_size: int, symbol: str) -> bytes:
+    """A minimal ELF32 object: .text of text_size bytes and one function symbol at its start (what hstmatch.py
+    leaves in obj.o, as far as hstnearmiss.our_body reads it)."""
+    shstr = b"\0.text\0.symtab\0.strtab\0.shstrtab\0"
+    strtab = b"\0" + symbol.encode() + b"\0"
+    symtab = bytes(16) + struct.pack("<IIIBBH", 1, 0, text_size, 0x12, 0, 1)
+    body_ = bytes(text_size)
+    off_text = 52
+    off_sym = off_text + len(body_)
+    off_str = off_sym + len(symtab)
+    off_shstr = off_str + len(strtab)
+    shoff = (off_shstr + len(shstr) + 3) & ~3
+    head = struct.pack("<4sBBBB8xHHIIIIIHHHHHH", b"\x7fELF", 1, 1, 1, 0, 1, 8, 1, 0, 0, shoff, 0, 52, 0, 0, 40, 5, 4)
+    data = head + body_ + symtab + strtab + shstr
+    data += bytes(shoff - len(data))
+    sections = [bytes(40),
+                struct.pack("<10I", 1, 1, 6, 0, off_text, text_size, 0, 0, 4, 0),
+                struct.pack("<10I", 7, 2, 0, 0, off_sym, len(symtab), 3, 1, 4, 16),
+                struct.pack("<10I", 15, 3, 0, 0, off_str, len(strtab), 0, 0, 1, 0),
+                struct.pack("<10I", 23, 3, 0, 0, off_shstr, len(shstr), 0, 0, 1, 0)]
+    return data + b"".join(sections)
+
+
+class SourceModeTest(unittest.TestCase):
+    """A source checked end to end against a synthetic campaign and synthetic build products (no game data)."""
+
+    def side(self, candidate: bytes) -> C.Report:
+        import hstmatch as M
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            module = ORIGINAL + bytes(64)
+            (t / "mod.bin").write_bytes(module)
+            (t / "campaign" / "ledger").mkdir(parents=True)
+            (t / "campaign" / "inputs").mkdir()
+            seg = {"start": BASE, "file_offset": 0, "file_end": len(module), "memory_end": BASE + 0x200, "flags": 5}
+            (t / "campaign" / "ledger" / "campaign.json").write_text(json.dumps(
+                {"modules": [{"name": "EBOOT.BIN", "input": {"root": "r", "path": "mod.bin"}, "load_segments": [seg],
+                              "functions": [{"start": BASE, "end": BASE + len(ORIGINAL)}]}]}))
+            (t / "campaign" / "inputs" / "revision-selection.json").write_text(json.dumps({"roots": {"r": str(t)}}))
+            src = t / "wip" / "near_08900000.c"
+            src.parent.mkdir()
+            src.write_text(f"/* HSTMATCH module=EBOOT.BIN start=0x{BASE:08x} end=0x{BASE + len(ORIGINAL):08x} "
+                           f"symbol=near_08900000 lang=c99 */\n")
+            out = t / "build" / "EBOOT.BIN" / M.build_key(src)
+            out.mkdir(parents=True)
+            (out / "text.bin").write_bytes(candidate)
+            (out / "obj.o").write_bytes(relocatable(len(candidate), "near_08900000"))
+            saved = {k: os.environ.get(k) for k in ("HST_CAMPAIGN_ROOT", C.BUILD_ROOT_ENV)}
+            os.environ["HST_CAMPAIGN_ROOT"] = str(t / "campaign")
+            os.environ[C.BUILD_ROOT_ENV] = str(t / "build")
+            try:
+                fn = C.source_function(src)
+            finally:
+                for k, v in saved.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+        self.assertEqual(fn.original, ORIGINAL)
+        self.assertEqual(fn.segments, [(BASE, module + bytes(0x200 - len(module)))])
+        return C.check(fn, states(), C.run_builtin)
+
+    def test_source_same_results(self):
+        self.assertEqual(self.side(REALLOCATED).verdict, "SAME_RESULTS")
+
+    def test_source_different(self):
+        rep = self.side(WRONG_IMMEDIATE)
+        self.assertEqual(rep.verdict, "DIFFERENT")
+        self.assertIn("first difference v0", rep.text)
 
 
 def nakagawa_run_elf() -> Path | None:

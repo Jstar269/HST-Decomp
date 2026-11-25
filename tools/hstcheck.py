@@ -120,7 +120,7 @@ class Function:
 # starting states
 
 def random_state(index: int, seed: int) -> StartState:
-    rng = random.Random(f"{TOOL}:{seed}:{index}")
+    rng = random.Random(f"psp-check:{seed}:{index}")   # the same states in both decomps
     profile = index % 4                  # 0: pointer arguments, 1: edge values, 2: anything, 3: small integers
 
     def pointer() -> int:
