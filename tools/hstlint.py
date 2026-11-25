@@ -44,6 +44,15 @@ ANNOTATIONS_BEFORE_NOTE = 2
 LEADING_COMMENT = re.compile(r"[ \t]*\n?[ \t]*/\*(.*?)\*/", re.S)
 
 
+def note_kind(comment: str) -> str | None:
+    """The NOTE_KINDS kind of a comment's text, or None. A note starts with its kind's words (CONTRIBUTING.md and
+    docs/GUIDE.md, "Starts with"), so a comment that only mentions them later ("Template instance of src/... (a
+    Hand-written reconstruction)") is not that kind. A template note starts with its own description and names
+    hsttmpl.py further on, so that kind may stand anywhere in the comment."""
+    body = comment.lstrip()
+    return next((k for k, rx in NOTE_KINDS if (rx.search(body) if k == "template" else rx.match(body))), None)
+
+
 def provenance_note(text: str) -> tuple[str | None, str]:
     """(kind, comment) of a source's provenance note (CONTRIBUTING.md, "Line 2: the note"): the comment right after the
     header line, or, after at most ANNOTATIONS_BEFORE_NOTE one-line annotation comments, the first one of a NOTE_KINDS
@@ -58,7 +67,7 @@ def provenance_note(text: str) -> tuple[str | None, str]:
         if not m:
             break
         seen.append(m.group(0).strip())
-        kind = next((k for k, rx in NOTE_KINDS if rx.search(m.group(1))), None)
+        kind = note_kind(m.group(1))
         if kind:
             return kind, m.group(0).strip()
         if "\n" in m.group(1):                  # an annotation is one line; a longer comment is not one

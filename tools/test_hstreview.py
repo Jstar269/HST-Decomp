@@ -120,6 +120,36 @@ class SourceLoadingAndDecisionsTests(unittest.TestCase):
                 R._FILE_CACHE.update(old_cache)
 
 
+class AnnotatedNoteTests(unittest.TestCase):
+    def test_the_note_after_a_data_tables_pointer_is_the_note(self) -> None:
+        header = "/* HSTMATCH module=EBOOT.BIN start=0x{0:08x} end=0x{1:08x} symbol=FUN_{0:08x} lang=c99 */\n"
+        pointer = "/* Table reader: row count (this+8); see docs/DATA-TABLES.md */\n"
+        hand = "/* Hand-written reconstruction from the disassembly; exact match verified. */"
+        clone = "/* Clone of src/ex.c (hstclone.py tag t1): addresses substituted. */"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            (root / "src" / "ex.c").write_text(header.format(0x10000, 0x10020) + pointer + hand + "\nint x;\n",
+                                               encoding="utf-8")
+            (root / "src" / "tw.c").write_text(header.format(0x10020, 0x10040) + pointer + clone + "\nint y;\n",
+                                               encoding="utf-8")
+            old_root, old_cache = R.M.ROOT, dict(R._FILE_CACHE)
+            try:
+                R.M.ROOT = root
+                R._FILE_CACHE.clear()
+                items = {it["path"]: it for it in R.load_sources()}
+            finally:
+                R.M.ROOT = old_root
+                R._FILE_CACHE.clear()
+                R._FILE_CACHE.update(old_cache)
+        self.assertEqual((items["src/ex.c"]["kind"], items["src/ex.c"]["note"]), ("hand", hand[3:-3].strip()))
+        # "Accept with clones" finds the clone through its note
+        self.assertEqual((items["src/tw.c"]["kind"], items["src/tw.c"]["exemplar"]), ("clone", "src/ex.c"))
+
+    def test_the_kind_filter_offers_templates(self) -> None:
+        self.assertIn("<option>template</option>", R.PAGE)
+
+
 class DisassemblyTests(unittest.TestCase):
     def test_retail_disasm(self) -> None:
         old_module_bytes = R.M.module_bytes
