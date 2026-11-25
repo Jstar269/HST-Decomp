@@ -1,0 +1,32 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  python:
+    name: Analyze Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL for Python
+        uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          languages: python
+          build-mode: none
+      - name: Analyze and upload results
+        uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          category: /language:python
