@@ -5,7 +5,8 @@ no binaries and no game data.
 
 ## Reporting a problem
 
-Report a vulnerability privately through GitHub: **Security → Report a vulnerability** on this repository. Examples:
+Use GitHub's [private vulnerability reporting form](https://github.com/Jstar269/HST-Decomp/security/advisories/new)
+to contact this repository's maintainer. Examples:
 a tool that can be made to write outside its working directory, run code from crafted input, or publish private files.
 Please don't open a public issue for these. You can expect an acknowledgement within a week.
 
