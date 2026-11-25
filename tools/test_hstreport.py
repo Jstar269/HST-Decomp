@@ -239,6 +239,25 @@ class UnitTests(unittest.TestCase):
         self.assertTrue(hstprcheck.report_problems(json.dumps(bad).encode()))
         self.assertTrue(hstprcheck.report_problems(b"[]"))
 
+    def test_sgx_block_functions_without_a_source_are_sdk_code(self) -> None:
+        """The SGX sound library's block (hstorigin.SGX_BLOCKS) is Sony middleware: the README's publishable figure
+        leaves the whole block out, so the report lists none of its functions as a recovered sgx*.c unit or as a
+        not-yet-recovered game function, whether or not a source of an excluded class covers it yet."""
+        import hstorigin
+        spans = R.excluded_spans({})
+        for module, block in hstorigin.SGX_BLOCKS.items():
+            self.assertIn(block, spans.get(module, []))
+        f, sc, led = unit_inputs()
+        sgx = {"A.BIN": [(0x8, 0x10), (0x28, 0x30)]}      # one function without a source, one a source covers
+        tus = {"A.BIN": {0x8: "sgxsnd.c"}}
+        rep = R.build_report(f, sc, led, sgx, SYMBOLS, tus)
+        self.assertEqual(R.unit_problems(rep), [])
+        names = [u["name"] for u in rep["units"]]
+        self.assertNotIn("A.BIN/sgxsnd.c", names)
+        sdk = next(u for u in rep["units"] if u["name"] == "A.BIN/sdk-library-not-published")
+        self.assertEqual(sdk["measures"], {"total_code": "8", "total_functions": 1})
+        self.assertEqual(rep["measures"]["matched_code"], unit_report()["measures"]["matched_code"])   # y.c keeps 0x28
+
 
 if __name__ == "__main__":
     unittest.main()
