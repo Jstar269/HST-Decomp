@@ -66,6 +66,22 @@ class ClassTests(unittest.TestCase):
         self.assertEqual(warnings, [])
         self.assertEqual((classes["src/eboot/in.c"], classes["src/eboot/out.c"]), (O.SGX, "gcc-unattributed"))
 
+    def test_a_clone_with_its_own_newlib_note_is_newlib(self) -> None:
+        # the note comes first for a clone too (as in own_class and in lbporigin.py): a clone whose own note says
+        # newlib is newlib, whatever its exemplar's class or its place
+        lo, hi = O.SGX_BLOCKS[EBOOT]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source(root, "src/eboot/sdk.c", hi + 0x100, "gcc171-O2")
+            for rel, start in (("src/eboot/n1.c", hi + 0x200), ("src/eboot/n2.c", lo + 0x20)):
+                path = source(root, rel, start, "gcc171-O2")
+                head, body = path.read_text(encoding="utf-8").split("\n", 1)
+                path.write_text(f"{head}\n/* Clone of src/eboot/sdk.c (hstclone.py tag t1) */\n"
+                                "/* Library source: newlib 1.14.0 libc_string/strcpy.c function strcpy */\n" + body,
+                                encoding="utf-8")
+            classes, _warnings = O.classify(root)
+        self.assertEqual((classes["src/eboot/n1.c"], classes["src/eboot/n2.c"]), ("newlib", "newlib"))
+
     def test_the_class_is_excluded_like_the_sdk(self) -> None:
         import hstpublish
         self.assertIn(O.SGX, O.CLASSES)

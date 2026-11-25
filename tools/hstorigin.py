@@ -23,8 +23,9 @@ Every source under src/ (and the near misses under wip/) gets exactly one origin
 
 Order of the rules: a newlib note first, then the sony-prx directories, then the SGX block, then the compiler profile
 (gcc -> gcc-unattributed), then the runtime-name check, else game. A clone (`Clone of src/... (hstclone.py ...)`)
-inherits the class of its exemplar, followed through chains of clones, except for the SGX class, which is a class
-of place: a clone inside the SGX block is SGX, and a clone of an SGX function outside the block takes its own class.
+inherits the class of its exemplar, followed through chains of clones, except that a clone whose own note says newlib
+is newlib (the note comes first), and for the SGX class, which is a class of place: a clone inside the SGX block is
+SGX, and a clone of an SGX function outside the block takes its own class.
 
 SGX_BLOCKS. From the first function to the end of the last function of the SGX units tools/hsttu.py recovers
 (sgxbmg.c, sgxconf.c, sgxport.c, sgxpsp.c, sgxres.c, sgxseq.c, sgxsnd.c, sgxsndnote.c, sgxsys.c, sgxvo.c; their
@@ -124,7 +125,9 @@ def classify(root: Path = ROOT) -> tuple[dict[str, str], list[str]]:
         while cur in exemplar_of and cur not in seen:   # clone of a clone
             seen.append(cur)
             cur = exemplar_of[cur]
-        if in_sgx_block(M.parse_header(path)):
+        if NEWLIB_NOTE.search(path.read_text(encoding="utf-8", errors="replace")[:3000]):
+            result[key] = "newlib"   # the clone's own note comes first, as in own_class
+        elif in_sgx_block(M.parse_header(path)):
             result[key] = SGX
         elif cur in result:
             result[key] = result[cur] if result[cur] != SGX else own_class(path, root)
