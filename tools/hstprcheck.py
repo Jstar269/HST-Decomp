@@ -20,14 +20,19 @@ adds or changes:
                   /mnt/c/Users/...), a private key block, a GitHub, OpenAI or AWS token
   dump            an added file with more than 16 lines that look like a disassembly listing (an address, an
                   instruction word, a mnemonic): disassembly of the game is never published
-  symbols         a deleted or changed line in symbols/ (the symbol maps are append-only)
+  symbols         a deleted or changed line in symbols/ (the symbol maps are append-only); deleting, renaming or
+                  replacing (a symbolic link) a file of symbols/ or the log deletes all its lines and is refused too;
+                  or a map that no longer loads: a line that is not `NAME = 0xADDRESS;`, a name bound to two
+                  addresses, or an address name (FUN_/DAT_/LAB_/PTR_/jtbl_xxxxxxxx) bound to another address
+                  (tools/hstmatch.py load_symbols)
   header          a source in src/ or wip/ whose first line is not an HSTMATCH header with module, start, end and
                   symbol, or that repeats the header further down; a source in src/ without one of the provenance
                   notes CONTRIBUTING.md lists right after the header (tools/hstlint.py provenance_note: one-line
                   annotations such as a docs/DATA-TABLES.md pointer may come first). A near miss in wip/ needs the
                   header only (CONTRIBUTING.md, "Near misses")
   gate            a source the fake-match gate refuses (tools/hstgate.py: asm that emits instructions, data
-                  directives, code-emitting pragmas, extra= under src/)
+                  directives, code-emitting pragmas, extra= under src/, cc=gcc404x-* outside the SDK units), with the
+                  SDK units of the base (data/sdk-gcc4-units.json), so a pull request cannot widen them for itself
 
 It needs no game, compiler or configuration, so it runs in CI on every pull request and before you open one. It is a
 first filter: the maintainer still reviews every change and re-verifies every source with tools/hstmatch.py before
@@ -39,6 +44,7 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -74,30 +80,92 @@ HEADER = re.compile(rf"^/\* {MATCH} (?=.*\bmodule=\S)(?=.*\bstart=0x[0-9a-fA-F]+
                     r"(?=.*\bsymbol=\S).*\*/\s*$")
 
 
+SYMBOL_LINE = re.compile(r"(\S+)\s*=\s*(0x[0-9A-Fa-f]+)\s*;?")
+ADDRESS_NAME = re.compile(r"(?:FUN|DAT|LAB|PTR|jtbl)_([0-9a-fA-F]{8})")
+
+
+def symbol_problems(text: str) -> list[str]:
+    """Why a symbol map would not load in tools/hstmatch.py load_symbols ([] when it loads): the same line rules."""
+    seen: dict[str, int] = {}
+    out = []
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        m = SYMBOL_LINE.fullmatch(line)
+        if not m:
+            out.append(f"line {n} is not `NAME = 0xADDRESS;`: {line[:60]}")
+            continue
+        name, value = m.group(1), int(m.group(2), 16)
+        named = ADDRESS_NAME.fullmatch(name)
+        if named and int(named.group(1), 16) != value:
+            out.append(f"line {n}: {name} = 0x{value:08x} contradicts the address its name carries")
+        if seen.setdefault(name, value) != value:
+            out.append(f"line {n}: {name} is already bound to 0x{seen[name]:08x}")
+    return out
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True,
                           encoding="utf-8", errors="replace").stdout
 
 
+def git_z(repo: Path, *args: str) -> list[str]:
+    """The NUL-separated fields of a `git ... -z` listing. With -z git writes each path as it is, never C-quoted (a
+    name with a non-ASCII byte, a quote, a backslash or a tab is "quoted\\303\\251" otherwise, which names no file);
+    the bytes are decoded with surrogateescape so that the path still names the file on disk."""
+    out = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True).stdout
+    return out.decode("utf-8", "surrogateescape").split("\0")[:-1]
+
+
 def changed_files(repo: Path, base: str) -> list[tuple[str, str]]:
     """(status, path) of every file the branch adds or modifies relative to the merge base (deletions are fine)."""
-    out = git(repo, "diff", "--name-status", "--no-renames", "--diff-filter=AM", f"{base}...HEAD")
-    return [tuple(line.split("\t", 1)) for line in out.splitlines() if line.strip()]
+    fields = git_z(repo, "diff", "--name-status", "-z", "--no-renames", "--diff-filter=AM", f"{base}...HEAD")
+    return list(zip(fields[0::2], fields[1::2]))
+
+
+def removed_files(repo: Path, base: str) -> list[tuple[str, str]]:
+    """(status, path) of every file the branch deletes (D) or turns into another kind of file (T: a symbolic link,
+    a submodule). A rename is a deletion and an addition (--no-renames)."""
+    fields = git_z(repo, "diff", "--name-status", "-z", "--no-renames", "--diff-filter=DT", f"{base}...HEAD")
+    return list(zip(fields[0::2], fields[1::2]))
+
+
+def append_only(path: str) -> bool:
+    return path.startswith("symbols/") or path in APPEND_ONLY_LOGS
 
 
 def binary_paths(repo: Path, base: str) -> set[str]:
-    out = git(repo, "diff", "--numstat", "--no-renames", "--diff-filter=AM", f"{base}...HEAD")
-    return {line.split("\t", 2)[2] for line in out.splitlines() if line.startswith("-\t-\t")}
+    fields = git_z(repo, "diff", "--numstat", "-z", "--no-renames", "--diff-filter=AM", f"{base}...HEAD")
+    return {f.split("\t", 2)[2] for f in fields if f.startswith("-\t-\t")}
+
+
+def hunk_lines(repo: Path, base: str, path: str, sign: str) -> list[str]:
+    """The lines of the file's hunks that start with sign ("+" added, "-" removed), without it. Only lines inside a
+    hunk count: a file line that starts with "++" or "--" is "+++ ..." or "--- ..." in the diff, and only the file
+    headers before the first "@@" are skipped. The diff is split at newlines only (what git counts as a line), never
+    at the CR, form feed or other separators str.splitlines() also splits at, so no part of a line is dropped."""
+    # bytes, decoded here: text mode turns a CR into \n. --literal-pathspecs: the path names this one file, never
+    # pathspec magic (":(exclude)*") or a glob ("[ab].c")
+    out = subprocess.run(["git", "--literal-pathspecs", "diff", "--no-renames", "-U0", f"{base}...HEAD", "--", path],
+                         cwd=repo, check=True, capture_output=True).stdout.decode("utf-8", "replace")
+    lines, in_hunk = [], False
+    for line in out.split("\n"):
+        if line.startswith("diff --git "):
+            in_hunk = False
+        elif line.startswith("@@"):
+            in_hunk = True
+        elif in_hunk and line.startswith(sign):
+            lines.append(line[1:])
+    return lines
 
 
 def added_lines(repo: Path, base: str, path: str) -> list[str]:
-    out = git(repo, "diff", "--no-renames", "-U0", f"{base}...HEAD", "--", path)
-    return [l[1:] for l in out.splitlines() if l.startswith("+") and not l.startswith("+++")]
+    return hunk_lines(repo, base, path, "+")
 
 
 def removed_lines(repo: Path, base: str, path: str) -> list[str]:
-    out = git(repo, "diff", "--no-renames", "-U0", f"{base}...HEAD", "--", path)
-    return [l[1:] for l in out.splitlines() if l.startswith("-") and not l.startswith("---")]
+    return hunk_lines(repo, base, path, "-")
 
 
 def is_redaction(old: str, new: str) -> bool:
@@ -133,11 +201,55 @@ def report_problems(data: bytes) -> list[str]:
         return [f"not an objdiff report tools/hstreport.py writes ({type(exc).__name__})"]
 
 
+def base_sdk_units(repo: Path, base: str, into: Path) -> Path:
+    """A root that holds the merge base's data/sdk-gcc4-units.json (or none, when the base has none), for the gate's
+    gcc404x-outside-sdk rule: a pull request that widens the SDK units must not pass its own sources with them."""
+    rel = hstgate.SDK_UNITS_FILE.as_posix()
+    merge_base = git(repo, "merge-base", base, "HEAD").strip()
+    shown = subprocess.run(["git", "show", f"{merge_base}:{rel}"], cwd=repo, capture_output=True)
+    if shown.returncode == 0:
+        (into / rel).parent.mkdir(parents=True, exist_ok=True)
+        (into / rel).write_bytes(shown.stdout)
+    return into
+
+
+def gate_findings(file: Path, repo: Path, units_root: Path) -> list:
+    """hstgate.check_file, with the SDK units read under units_root (the base's) instead of the pull request's.
+    Project headers are still resolved in the working tree (repo): where hstgate checks the headers a source includes
+    (included_findings), their refusals count here as they do in check_file."""
+    text = file.read_text(encoding="utf-8", errors="replace")
+    header = None
+    m = re.search(r"/\*\s*HSTMATCH\s+(.*?)\*/", text[:2000], re.S)
+    if m:
+        header = {k: v.strip('"') for k, v in re.findall(r'(\w+)=("[^"]*"|\S+)', m.group(1))}
+    found = hstgate.check_text(text, header, hstgate.tree_of(file, repo), units_root)
+    included = getattr(hstgate, "included_findings", None)
+    if included is not None:
+        found += included(file, repo)
+    return sorted(found, key=lambda f: (f.line, f.kind))
+
+
 def check(repo: Path, base: str) -> list[str]:
+    with tempfile.TemporaryDirectory(prefix="hstprcheck-") as tmp:
+        return _check(repo, base, base_sdk_units(repo, base, Path(tmp)))
+
+
+def _check(repo: Path, base: str, units_root: Path) -> list[str]:
     refusals: list[str] = []
     binaries = binary_paths(repo, base)
+    for status, path in removed_files(repo, base):
+        if append_only(path):     # deleting, renaming or replacing the file deletes every line of it
+            refusals.append(f"{'symbols' if path.startswith('symbols/') else 'log':<8} {path}: "
+                            + ("deleted or renamed" if status == "D" else "replaced by another kind of file")
+                            + " (append only)")
     for status, path in changed_files(repo, base):
         file = repo / path
+        try:
+            path.encode("utf-8")
+        except UnicodeEncodeError:
+            shown = path.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
+            refusals.append(f"name     {shown}: a file name must be UTF-8")
+            continue
         if Path(path).suffix.lower() in BINARY_SUFFIXES or path in binaries:
             refusals.append(f"binary   {path}: binary files and game data are never added")
             continue
@@ -171,11 +283,16 @@ def check(repo: Path, base: str) -> list[str]:
                 refusals.append(f"private  {path}: an added line holds a personal path or a secret: "
                                 f"{line.strip()[:80]}")
                 break
-        dump = sum(1 for line in added if DUMP_LINE.match(line))
+        # a listing with CR (or other non-newline) separators is one line to git: count each of its parts
+        dump = sum(1 for line in added for part in line.splitlines() if DUMP_LINE.match(part))
         if dump > DUMP_LIMIT:
             refusals.append(f"dump     {path}: {dump} added lines look like a disassembly listing")
         if path.startswith("symbols/") and status == "M" and removed_lines(repo, base, path):
             refusals.append(f"symbols  {path}: existing lines changed or deleted (append only)")
+        elif path.startswith("symbols/") and path.endswith(".txt"):
+            problems = symbol_problems(data.decode("utf-8", "replace"))
+            if problems:
+                refusals.append(f"symbols  {path}: the map no longer loads: {problems[0]}")
         if re.match(r"^(src|wip)/.*\.(c|cpp)$", path):
             text = data.decode("utf-8", "replace")
             lines = text.split("\n")
@@ -185,7 +302,7 @@ def check(repo: Path, base: str) -> list[str]:
                 refusals.append(f"header   {path}: a second {MATCH} header after line 1")
             elif path.startswith("src/") and hstlint.provenance_note(text)[0] is None:
                 refusals.append(f"header   {path}: no provenance note CONTRIBUTING.md lists right after the header")
-            found = hstgate.refusals(hstgate.check_file(file, repo))
+            found = hstgate.refusals(gate_findings(file, repo, units_root))
             if found:
                 refusals.append(f"gate     {path}: " + "; ".join(str(f) for f in found)[:200])
     return refusals
