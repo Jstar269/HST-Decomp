@@ -15,6 +15,7 @@ EXACT are written to src/, with a provenance note naming the exemplar.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import re
 import subprocess
@@ -204,6 +205,30 @@ def retarget(text: str, e_start: int, t_start: int, t_end: int, calls: dict[int,
     return head + "\n" + rest
 
 
+def covered_starts(module: str, starts) -> set[int]:
+    """The function starts among `starts` that a source in src/ already covers in `module`: its own start, a function
+    inside a source that spans several functions, or a function a source places with helpers=."""
+    spans = []
+    for q in (M.ROOT / "src").rglob("*"):
+        if q.suffix in (".c", ".cpp"):
+            h = M.parse_header(q)
+            if h["module"] == module:
+                spans.append((h["start"], max(h["end"], h["start"] + 1)))
+                spans += [(lo, hi) for _name, lo, hi in h.get("helpers") or []]
+    spans.sort()
+    los = [lo for lo, _hi in spans]
+    reach, top = [], 0
+    for _lo, hi in spans:
+        top = max(top, hi)
+        reach.append(top)
+    out = set()
+    for t in starts:
+        i = bisect.bisect_right(los, t) - 1
+        if i >= 0 and reach[i] > t:
+            out.add(t)
+    return out
+
+
 def load_functions(ledger: dict, name: str) -> dict[int, tuple[int, tuple]]:
     module = next(m for m in ledger["modules"] if m["name"] == name)
     data, seg = M.module_bytes({}, name)
@@ -313,11 +338,9 @@ def main() -> int:
             status[str((M.ROOT / row["source"]).resolve())] = row["status"]
     dest_dir = M.ROOT / "src" / SRC_DIRS[args.module]
     dest_dir.mkdir(parents=True, exist_ok=True)
-    ranges = [(int(h["start"]), int(h["end"])) for h in (M.parse_header(q) for q in (M.ROOT / "src").rglob("*")
-              if q.suffix in (".c", ".cpp")) if h["module"] == args.module]
-    covered = {h_start for h_start, _ in ranges}
-    # a run source (one file over several functions) covers every target inside its range, not only its start
-    covered |= {t for t in candidates if any(lo <= t < hi for lo, hi in ranges if hi - lo > 0)}
+    # a run source (one file over several functions) covers every target inside its range, not only its start, and
+    # a source's helpers= placements cover those functions too
+    covered = covered_starts(args.module, candidates)
     accepted = 0
     accepted_bytes = 0
     committed: dict[str, int] = {}
