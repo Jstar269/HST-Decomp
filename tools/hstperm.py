@@ -720,6 +720,7 @@ def steer_pragma(text: str, symbol: str, name: str, value: str = "off", origin: 
 def write_accepted(tag: str, key: tuple[str, int], path: Path, origin: str) -> int:
     module, start = key
     dest_dir = M.ROOT / "src" / SRC_DIRS[module]
+    dest_dir.mkdir(parents=True, exist_ok=True)     # the first source of a module (src/libfont/ and the like)
     if any(M.parse_header(p)["start"] == start for p in dest_dir.glob("*") if p.suffix in (".c", ".cpp")):
         return 0
     text = path.read_text(encoding="utf-8")
@@ -871,18 +872,27 @@ def main() -> int:
     print(f"seeding targets={len(pool)} seed_files={len(seed_files)}", flush=True)
     seeded = run_scored(cmd, seed_files, work / "seed", ends, owner)
     best: dict[tuple[str, int], tuple[int, str, str]] = {}
+    best_path: dict[tuple[str, int], Path] = {}
     for path_text, s in seeded.items():
         key = owner[path_text]
         if s <= args.max_diff and (key not in best or s < best[key][0]):
             best[key] = (s, Path(path_text).read_text(encoding="utf-8"), origin[path_text])
+            best_path[key] = Path(path_text)
     keys = sorted(best, key=lambda k: best[k][0])
     if args.limit:
         keys = keys[:args.limit]
     state = {k: [best[k][0], best[k][1], best[k][2]] for k in keys}
     print(f"targets={len(state)} by_diff=" + json.dumps({d: sum(1 for v in state.values() if v[0] == d) for d in range(1, args.max_diff + 1)}), flush=True)
-    accepted = {}
+    # a seed recompiled EXACT (the generation run said MISMATCH, but headers or types changed since) is a match as it
+    # stands: install it now, as a round's exact variant would be, instead of mutating it and keeping it only in best/
+    accepted = {k: best_path[k] for k in keys if state[k][0] == 0}
     written_keys: set = set()
     written = 0
+    for key in accepted:
+        written_keys.add(key)
+        written += write_accepted(args.tag, key, accepted[key], state[key][2])
+    if accepted:
+        print(f"seeds already exact={len(accepted)} written={written}", flush=True)
     for rnd in range(args.rounds):
         active = [k for k in keys if k not in accepted]
         if not active:
