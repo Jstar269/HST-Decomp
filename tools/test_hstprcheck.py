@@ -143,6 +143,23 @@ class PrCheckTests(unittest.TestCase):
         self.write("symbols/new_module.prx.txt", "d = 0x00000020;\n")                # a new map is an append
         (self.repo / "src/eboot/FUN_00010000.c").unlink()                            # other deletions are fine
         self.commit("restore")
+
+    def test_appended_symbol_lines_must_keep_the_map_loadable(self) -> None:
+        # every tool that loads symbols/<module>.txt (hstmatch.load_symbols) refuses the whole map over one bad line,
+        # so an appended line that is malformed, binds a name a second time to another address, or binds an
+        # address name (FUN_/DAT_...) to an address other than its own breaks every match of the module
+        for line in ("b = 0x0001001;;\n", "b 0x00010010\n", "a = 0x00010004;   # a second address\n",
+                     "FUN_00010010 = 0x00010020;\n"):
+            with self.subTest(line=line):
+                self.git("checkout", "-q", "-B", "topic", "base")
+                self.write("symbols/EBOOT.BIN.txt", "a = 0x00010000;\n" + line)
+                self.commit("append")
+                self.assertEqual([r.split()[0] for r in self.refusals()], ["symbols"])
+        self.git("checkout", "-q", "-B", "topic", "base")
+        self.write("symbols/EBOOT.BIN.txt", "a = 0x00010000;\na = 0x00010000;   # repeated, same address\n"
+                                            "DAT_00010020 = 0x00010020;\n# a comment\n\n")
+        self.write("symbols/NEW.PRX.txt", "c = 0x0;\n")
+        self.commit("append")
         self.assertEqual(self.refusals(), [])
 
     def test_header_note_and_gate(self) -> None:
