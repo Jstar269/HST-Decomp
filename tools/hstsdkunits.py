@@ -14,7 +14,7 @@ A function is game code when an installed source compiles it with mwccpsp (no cc
 source, when tools/hstfamily.py predicts mwccpsp for it (try/family-predictions.json, probability at least 0.5) and it
 has no `ins $zero`. The file is part of the toolchain lock (tools/hstproof.py COMPARISON_CODE): a change to it is a
 gate-scope toolchain migration. Needs your decrypted modules. Without --write it prints the units and whether the
-committed file still matches.
+committed file still matches, and exits 1 when it does not.
 """
 from __future__ import annotations
 
@@ -116,7 +116,9 @@ def main() -> int:
         OUT.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {OUT.relative_to(ROOT).as_posix()}")
     elif OUT.exists():
-        print("committed file " + ("matches" if OUT.read_text(encoding="utf-8") == text else "DIFFERS"))
+        same = OUT.read_text(encoding="utf-8") == text
+        print("committed file " + ("matches" if same else "DIFFERS"))
+        return 0 if same else 1
     return 0
 
 

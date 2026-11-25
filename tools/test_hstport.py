@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -203,6 +204,19 @@ class PortingDocTests(unittest.TestCase):
         subset = dict(port_report(10, 4, {}), all_five_targets=False)
         with self.assertRaises(ValueError):
             H.render_measurement(subset, port_report(12, 5, {}))
+
+    def test_write_doc_with_a_target_subset_is_refused_before_anything_is_measured(self) -> None:
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp, \
+                unittest.mock.patch.object(H, "run_check", lambda **kwargs: calls.append(kwargs)), \
+                unittest.mock.patch.object(H, "write_report"), unittest.mock.patch("sys.stderr"):
+            try:
+                H.main(["--root", tmp, "--targets", H.TARGETS[0], "--write-doc"])
+            except SystemExit as exc:
+                self.assertEqual(exc.code, 2)
+            except (TypeError, ValueError):
+                pass                                       # main's run went on past the stand-in measurement
+        self.assertEqual(calls, [])
 
     def test_write_doc_replaces_only_the_block_and_needs_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

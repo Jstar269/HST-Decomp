@@ -30,11 +30,16 @@ def main() -> int:
     lang = args.lang or ("c++" if src.suffix == ".cpp" else "c99")
     out = M.ROOT / "build" / "hstcc"
     out.mkdir(parents=True, exist_ok=True)
-    obj = shlex.quote(M.to_wsl(out / f"{src.stem}.o"))
+    obj_path = out / f"{src.stem}.o"
+    obj_path.unlink(missing_ok=True)       # an object left by an earlier probe must not pass for this one
+    obj = shlex.quote(M.to_wsl(obj_path))
     M.run_wsl([f"cd {shlex.quote(M.to_wsl(src.parent))} && MWCIncludes={shlex.quote(M.to_wsl(M.ROOT / 'include'))} "
                f"$N/wibo $N/builds/{args.build}/mwccpsp.exe {M.PROFILE['flags']} -lang {lang} {args.extra} "
                f"-o {obj} {shlex.quote(src.name)} && {M.pspdev_bin()}/psp-objdump -dr {obj} | tail -n +6"],
               "hstcc", M.native_dir())
+    if not obj_path.exists():
+        print(f"hstcc: {args.source} did not compile (the compiler's messages are above)", file=sys.stderr)
+        return 1
     return 0
 
 

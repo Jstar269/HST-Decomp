@@ -572,6 +572,16 @@ def build_locked(module: str, args: argparse.Namespace) -> int:
     rep_path.parent.mkdir(parents=True, exist_ok=True)
     rep_path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print(f"report: {rep_path.relative_to(ROOT).as_posix() if rep_path.is_relative_to(ROOT) else rep_path.as_posix()}")
+    return build_status(report, getattr(args, "shift", None) is not None)
+
+
+def build_status(report: dict, shifted: bool) -> int:
+    """The exit status of one module's build, as tools/lbpbuild.py's: 0 only when the link succeeded and the whole image
+    equals the retail module and, with --shift, the shifted build passes; 1 otherwise (the report says what failed)."""
+    if report.get("link_failed") or not report.get("identical"):
+        return 1
+    if shifted and not report.get("shifted_build_passes"):
+        return 1
     return 0
 
 

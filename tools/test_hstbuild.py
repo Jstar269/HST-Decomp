@@ -3,6 +3,8 @@
 and their order, relocatable scaffolding, the shifted-build expectation, the census and the container."""
 from __future__ import annotations
 
+import argparse
+import io
 import shutil
 import struct
 import sys
@@ -10,6 +12,8 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import redirect_stdout
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -488,6 +492,35 @@ class ContainerTests(unittest.TestCase):
             self.assertEqual(ph, (1, content, 0, content + 0x20, 0x74, 0x100, 7, 16))     # p_paddr: the module info
             self.assertEqual(elf.by_name(".comment").data, b"TOOL\0")
             self.assertEqual(len(image) % (4 if name == "eboot" else 1), 0)
+
+
+class ExitStatusTests(unittest.TestCase):
+    """A build that fails exits 1, as tools/lbpbuild.py does; the steps before the link are stand-ins."""
+
+    def run_build(self, outcome: dict, shift: int | None = None) -> int:
+        def link(_module, _retail, _prepared, _out_dir, _obj_dir, report, _args) -> None:
+            report.update(outcome)
+        with tempfile.TemporaryDirectory() as tmp:
+            args = argparse.Namespace(out_dir=str(Path(tmp) / "out"), report_dir=str(Path(tmp) / "reports"),
+                                      src_dir=None, private=True, reuse_isolation=None, parallel=1, shift=shift)
+            with mock.patch.object(B, "collect_sources", return_value=[]), \
+                    mock.patch.object(B, "run_isolation", return_value=[]), \
+                    mock.patch.object(B, "load_retail", return_value=(None, None)), \
+                    mock.patch.object(B, "link_and_compare", link), redirect_stdout(io.StringIO()):
+                return B.build_locked("EBOOT.BIN", args)
+
+    def test_an_identical_image_exits_0(self) -> None:
+        self.assertEqual(self.run_build({"identical": True}), 0)
+
+    def test_a_failed_link_exits_1(self) -> None:
+        self.assertEqual(self.run_build({"link_failed": "psp-ld: undefined reference"}), 1)
+
+    def test_an_image_that_differs_from_retail_exits_1(self) -> None:
+        self.assertEqual(self.run_build({"identical": False}), 1)
+
+    def test_a_shifted_build_that_fails_exits_1(self) -> None:
+        self.assertEqual(self.run_build({"identical": True, "shifted_build_passes": False}, shift=0x1000), 1)
+        self.assertEqual(self.run_build({"identical": True, "shifted_build_passes": True}, shift=0x1000), 0)
 
 
 class LockTests(unittest.TestCase):

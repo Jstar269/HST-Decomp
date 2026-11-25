@@ -706,6 +706,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PORTING_DOC.as_posix()}: " + ("measurement rewritten" if changed else "measurement unchanged"))
         return 0
 
+    if args.write_doc and set(args.targets) != set(TARGETS):
+        ap.error("--write-doc needs a run of all five targets (a --targets subset is iteration-only)")
     root = args.root.resolve()
     config = args.config.resolve() if args.config else root / "hst-config.json"
     output_dir = args.output_dir.resolve() if args.output_dir else root / "try"
