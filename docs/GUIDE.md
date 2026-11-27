@@ -309,6 +309,19 @@ Tools that install sources (`hstgen`, `hstclone`, `hsttmpl`, `hstperm`, `hstnewl
 prepares batches for automated agents. A tool installs a source only after the matcher reports EXACT. The maintainers
 also run external AI agent lanes with orchestration scripts that are kept out of the public tree.
 
+**Changing the verdict.** The verdict depends on the comparison code (`tools/hstmatch.py`,
+`hstpromote.py`, `hstproof.py`, `hstgate.py`, `hstconfig.py`), the compiler profiles and `include/`. The toolchain
+lock (`data/toolchain-manifest.json`) hashes all of them, so a change there is finished only when
+`python tools/hstpromote.py migrate-toolchain --reason "..."` has reverified every accepted proof under the new
+toolchain and written the lock; if any proof fails, the change is wrong, not the proof. Add synthetic, game-free
+tests (`tools/test_*.py`, each runnable as `python tools/test_<name>.py`).
+
+**Starter functions.** `data/starter-issues.json` lists the functions that an open
+`good first issue` offers; `tools/hstattempts.py` reserves them, so `hstqueue.py` never batches them and
+`hstnearperm.py` never permutes them. To open a starter issue, add its functions to the file in the same change;
+when the issue closes, remove them. `python tools/hstattempts.py starters` lists the entries that a source now
+covers.
+
 ## Origin classes and the publish filter
 
 `python tools/hstorigin.py` gives every source under `src/` and `wip/` one origin class and writes them to
