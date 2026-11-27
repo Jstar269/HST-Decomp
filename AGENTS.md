@@ -40,14 +40,16 @@ the brief and this file disagree, the stricter rule applies.
   <https://github.com/lemiur/Game-Decompilation-Skill-For-Claude>). This file overrides their defaults.
 - **Typed struct members, never fixed-offset pointer casts.** Every new match reaches a field through a member of a
   declared struct or class, never through a pointer plus a constant offset cast to another type, or it is not
-  accepted. A source accepted before 2026-11-23 with such a cast stays in the byte-match figure but is not clean:
-  the separate clean figure (to come with the tools) leaves it out, and a standing lane retypes these sources.
+  accepted. A source accepted before 2026-11-23 with such a cast stays counted in the byte-match figure (that
+  figure is never lowered) but is not clean: the separate clean figure (to come with the tools) leaves it out, and a
+  standing lane retypes these sources.
 - **One home per type.** A type that several sources use is declared in one header under `include/hst/` and nowhere
   else: edit the header that owns it; never declare it again in a source or in a second header. A cleanup pass
   merges the duplicates that exist.
 - **No fakematches.** Nothing is written only to steer the compiler (the `decomp-code-rules` skill lists what is a
   fakematch and what is a genuine idiom), except a steering trick under the `MATCH-PENDING` rule below.
-- **Readability from the first commit.** Names, types and structure are in place when a source is first committed.
+- **Readability from the first commit.** Names, types and structure are in place when a source is first committed,
+  not left for a later clean-up.
 - **Debug symbols where they exist.** Before inventing a name or a type, check debugging.games for a build of this
   game or a related title that has symbols.
 
